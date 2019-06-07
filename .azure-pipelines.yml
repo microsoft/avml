@@ -1,0 +1,42 @@
+trigger:
+  batch: true
+  branches:
+    include:
+      - master
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+- script: |
+    DEBIAN_FRONTEND=noninteractive sudo apt-get install musl-dev musl-tools musl
+    rustup target add x86_64-unknown-linux-musl
+    cargo build --release --no-default-features --target x86_64-unknown-linux-musl --locked
+    cp target/x86_64-unknown-linux-musl/release/avml target/x86_64-unknown-linux-musl/release/avml-minimal
+    cargo build --release --target x86_64-unknown-linux-musl --locked
+    strip target/x86_64-unknown-linux-musl/release/avml
+    strip target/x86_64-unknown-linux-musl/release/avml-minimal
+  displayName: build
+
+- script: |
+    cargo test --release --target x86_64-unknown-linux-musl
+    sudo target/x86_64-unknown-linux-musl/release/avml --compress output.lime
+  displayName: test
+
+- task: ComponentGovernanceComponentDetection@0
+  inputs:
+    scanType: Register
+    verbosity: Verbose
+    alertWarningLevel: Low
+
+- task: PublishPipelineArtifact@0
+  displayName: publish avml
+  inputs:
+    targetPath: target/x86_64-unknown-linux-musl/release/avml
+    artifactName: avml
+
+- task: PublishPipelineArtifact@0
+  displayName: publish avml-minimal
+  inputs:
+    targetPath: target/x86_64-unknown-linux-musl/release/avml-minimal
+    artifactName: avml-minimal

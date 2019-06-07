@@ -1,0 +1,2 @@
+Canonical:UbuntuServer:12.04.5-LTS:latest
+RedHat:RHEL:8:latest
