@@ -7,11 +7,11 @@
 AVML is an X86_64 userland volatile memory acquisition tool written in
 [Rust](https://www.rust-lang.org/), intended to be deployed as a static binary.
 AVML can be used to acquire memory without knowing the target OS distribution
-or kernel a priori.  No on-target compliation or fingerprinting is needed.
+or kernel a priori.  No on-target compilation or fingerprinting is needed.
 
 ## Features
 * Save recorded images to external locations via Azure Blob Store or HTTP PUT
-* Automatic Retry (in case of network connection issues) with exponential backoff for uploaduing to Azure Blob Store
+* Automatic Retry (in case of network connection issues) with exponential backoff for uploading to Azure Blob Store
 * Optional page level compression using [Snappy](https://google.github.io/snappy/).
 * Uses [LiME](https://github.com/504ensicsLabs/LiME/) output format (when not using compression).
 
