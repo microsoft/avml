@@ -3,6 +3,14 @@ trigger:
   branches:
     include:
       - master
+  tags:
+    include:
+      - v*
+
+pr:
+  branches:
+    include:
+      - master
 
 pool:
   vmImage: ubuntu-latest
@@ -22,12 +30,6 @@ steps:
     cargo test --release --target x86_64-unknown-linux-musl
     sudo target/x86_64-unknown-linux-musl/release/avml --compress output.lime
   displayName: test
-
-- task: ComponentGovernanceComponentDetection@0
-  inputs:
-    scanType: Register
-    verbosity: Verbose
-    alertWarningLevel: Low
 
 - task: PublishPipelineArtifact@0
   displayName: publish avml
