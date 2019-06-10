@@ -9,6 +9,10 @@ AVML is an X86_64 userland volatile memory acquisition tool written in
 AVML can be used to acquire memory without knowing the target OS distribution
 or kernel a priori.  No on-target compilation or fingerprinting is needed.
 
+## Build Status
+
+[![Build Status](https://dev.azure.com/ms/avml/_apis/build/status/microsoft.avml?branchName=master)](https://dev.azure.com/ms/avml/_build/latest?definitionId=157&branchName=master)
+
 ## Features
 * Save recorded images to external locations via Azure Blob Store or HTTP PUT
 * Automatic Retry (in case of network connection issues) with exponential backoff for uploading to Azure Blob Store
