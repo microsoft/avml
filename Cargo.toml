@@ -1,6 +1,6 @@
 [package]
 name = "avml"
-version = "0.1.0"
+version = "0.1.1"
 license = "MIT"
 description = "A portable volatile memory acquisition tool"
 authors = ["avml@microsoft.com"]
@@ -17,13 +17,13 @@ blobstore = ["azure", "retry", "tokio-core", "url"]
 
 [dependencies]
 elf = "0.0.10"
-byteorder = "1.3.1"
+byteorder = "1.3.2"
 clap = {version = "2.33.0", default-features = false}
 snap = "0.2.5"
 url = { version = "1.7.2", optional = true }
 tokio-core = { version = "0.1.17", optional = true }
-retry = { version = "0.5.0", optional = true }
-reqwest = { version = "0.9.17", default-features = false, features = ["rustls-tls"], optional = true }
+retry = { version = "0.5.1", optional = true }
+reqwest = { version = "0.9.18", default-features = false, features = ["rustls-tls"], optional = true }
 azure = { version = "0.12.0", package = "azure_sdk_for_rust", optional = true}
 
 [profile.release]
