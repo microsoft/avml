@@ -10,8 +10,8 @@ IMAGES_TXT=${1:-test/images.txt}
 FILE=${2:-target/x86_64-unknown-linux-musl/release/avml}
 GROUP=vm-capture-test-`date '+%Y-%m-%d-%H-%M-%S'`-$$
 REGION=eastus
-STORAGE=$(dd if=/dev/random | tr -dc 'a-z0-9' | fold -w 24 | head -n 1)
-DST_PATH=$(dd if=/dev/random | tr -dc 'a-z0-9' | fold -w 24 | head -n 1)/avml
+STORAGE=$(dd if=/dev/urandom | tr -dc 'a-z0-9' | fold -w 24 | head -n 1)
+DST_PATH=$(dd if=/dev/urandom | tr -dc 'a-z0-9' | fold -w 24 | head -n 1)/avml
 CONTAINER=tools
 URL=https://${STORAGE}.blob.core.windows.net/${CONTAINER}/${DST_PATH}
 
