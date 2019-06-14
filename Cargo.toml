@@ -3,6 +3,7 @@ name = "avml"
 version = "0.1.0"
 license = "MIT"
 description = "A portable volatile memory acquisition tool"
+authors = ["avml@microsoft.com"]
 keywords = ["linux", "memory-forensics", "security"]
 categories = ["command-line-utilities"]
 homepage = "https://github.com/microsoft/avml"
@@ -28,3 +29,4 @@ azure = { version = "0.12.0", package = "azure_sdk_for_rust", optional = true}
 [profile.release]
 opt-level="z"
 lto=true
+panic="abort"

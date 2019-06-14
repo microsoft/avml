@@ -108,7 +108,8 @@ fn get_mem(src: Option<&str>, dst: &str, version: u32) -> Result<(), Box<dyn Err
 
 fn run_app() -> Result<(), Box<dyn Error>> {
     let sources = vec!["/proc/kcore", "/dev/crash", "/dev/mem"];
-    let args = App::new("avml")
+    let args = App::new(crate_name!())
+        .author(crate_authors!())
         .about(crate_description!())
         .version(crate_version!())
         .args(&[
