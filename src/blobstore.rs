@@ -18,14 +18,14 @@ const BACKOFF_COUNT: usize = 100;
 const MAX_BLOCK_SIZE: usize = 1024 * 1024 * 100;
 
 /// Converts the block index into an block_id
-fn to_id(count: u64) -> Result<Vec<u8>, Box<Error>> {
+fn to_id(count: u64) -> Result<Vec<u8>, Box<dyn Error>> {
     let mut bytes = vec![];
     bytes.write_u64::<LittleEndian>(count)?;
     Ok(bytes)
 }
 
 /// Parse a SAS token into the relevant components
-fn parse(sas: &str) -> Result<(String, String, String), Box<Error>> {
+fn parse(sas: &str) -> Result<(String, String, String), Box<dyn Error>> {
     let parsed = Url::parse(sas)?;
     let account = if let Some(host) = parsed.host_str() {
         let v: Vec<&str> = host.split_terminator('.').collect();
@@ -43,7 +43,7 @@ fn parse(sas: &str) -> Result<(String, String, String), Box<Error>> {
 }
 
 /// Upload a file to Azure Blob Store using a fully qualified SAS token
-pub fn upload_sas(filename: &str, sas: &str, block_size: usize) -> Result<(), Box<Error>> {
+pub fn upload_sas(filename: &str, sas: &str, block_size: usize) -> Result<(), Box<dyn Error>> {
     let block_size = cmp::min(block_size, MAX_BLOCK_SIZE);
     let (account, container, path) = parse(sas)?;
     let client = Client::azure_sas(&account, sas)?;
