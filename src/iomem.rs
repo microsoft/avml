@@ -39,10 +39,19 @@ mod tests {
     #[test]
     fn parse_iomem() {
         let ranges = super::parse("test/iomem.txt").unwrap();
-
         let expected = [
             4096..654_335,
             1_048_576..1_073_676_287,
+            4_294_967_296..6_979_321_855,
+        ];
+        assert_eq!(ranges, expected);
+
+        let ranges = super::parse("test/iomem-2.txt").unwrap();
+        let expected = [
+            4096..655_359,
+            1_048_576..1_055_838_207,
+            1_056_026_624..1_073_328_127,
+            1_073_737_728..1_073_741_823,
             4_294_967_296..6_979_321_855,
         ];
         assert_eq!(ranges, expected);
