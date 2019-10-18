@@ -3,34 +3,14 @@
 
 #[macro_use]
 extern crate clap;
-extern crate byteorder;
-extern crate elf;
-extern crate snap;
-
-#[cfg(feature = "put")]
-extern crate reqwest;
-
-#[cfg(feature = "blobstore")]
-extern crate azure;
-#[cfg(feature = "blobstore")]
-extern crate retry;
-#[cfg(feature = "blobstore")]
-extern crate tokio_core;
-#[cfg(feature = "blobstore")]
-extern crate url;
+extern crate avml;
 
 use clap::{App, Arg};
 use std::error::Error;
 #[cfg(any(feature = "blobstore", feature = "put"))]
 use std::fs;
 use std::fs::metadata;
-
-#[cfg(feature = "blobstore")]
-mod blobstore;
-mod image;
-mod iomem;
-#[cfg(feature = "put")]
-mod upload;
+use std::ops::Range;
 
 fn kcore(
     ranges: &[std::ops::Range<u64>],
@@ -41,7 +21,7 @@ fn kcore(
         return Err(From::from("locked down kcore"));
     }
 
-    let mut image = image::Image::new(version, "/proc/kcore", filename)?;
+    let mut image = avml::image::Image::new(version, "/proc/kcore", filename)?;
     let mut file = elf::File::open_stream(&mut image.src).expect("unable to analyze /proc/kcore");
     file.phdrs.retain(|&x| x.progtype == elf::types::PT_LOAD);
     file.phdrs.sort_by(|a, b| a.vaddr.cmp(&b.vaddr));
@@ -50,7 +30,7 @@ fn kcore(
     for range in ranges {
         for phdr in &file.phdrs {
             if range.start == phdr.vaddr - start {
-                image.handle_block(phdr.offset, range.start, phdr.memsz)?;
+                image.write_block(phdr.offset, Range{start: range.start, end: phdr.memsz})?;
             }
         }
     }
@@ -63,28 +43,24 @@ fn phys(
     mem: &str,
     version: u32,
 ) -> Result<(), Box<dyn Error>> {
-    let mut image = image::Image::new(version, mem, filename)?;
+    let mut image = avml::image::Image::new(version, mem, filename)?;
     for range in ranges {
-        image.handle_block(range.start, range.start, 1 + range.end - range.start)?;
+        image.write_block(range.start, range.clone())?;
     }
 
     Ok(())
 }
 
 macro_rules! try_method {
-    ($func:expr, $src:expr) => {{
-        eprintln!("trying {}", $src);
-        if let Err(err) = $func {
-            eprintln!("failed {}: {}", $src, err);
-        } else {
-            eprintln!("succeeded {}", $src);
+    ($func:expr) => {{
+        if $func.is_ok() {
             return Ok(());
         }
     }};
 }
 
 fn get_mem(src: Option<&str>, dst: &str, version: u32) -> Result<(), Box<dyn Error>> {
-    let ranges = iomem::parse("/proc/iomem")?;
+    let ranges = avml::iomem::parse("/proc/iomem")?;
 
     if let Some(source) = src {
         let result = match source {
@@ -99,9 +75,9 @@ fn get_mem(src: Option<&str>, dst: &str, version: u32) -> Result<(), Box<dyn Err
         return result;
     }
 
-    try_method!(phys(&ranges, dst, "/dev/crash", version), "/dev/crash");
-    try_method!(kcore(&ranges, dst, version), "/proc/kcore");
-    try_method!(phys(&ranges, dst, "/dev/mem", version), "/dev/mem");
+    try_method!(phys(&ranges, dst, "/dev/crash", version));
+    try_method!(kcore(&ranges, dst, version));
+    try_method!(phys(&ranges, dst, "/dev/mem", version));
 
     Err(From::from("unable to read physical memory"))
 }
@@ -161,7 +137,7 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     {
         let url = args.value_of("url");
         if let Some(url) = url {
-            upload::put(&dst, url)?;
+            avml::upload::put(&dst, url)?;
             if args.is_present("delete") {
                 fs::remove_file(&dst)?;
             }
@@ -178,7 +154,7 @@ fn run_app() -> Result<(), Box<dyn Error>> {
         } * 1024
             * 1024;
         if let Some(sas_url) = sas_url {
-            blobstore::upload_sas(&dst, sas_url, sas_block_size)?;
+            avml::blobstore::upload_sas(&dst, sas_url, sas_block_size)?;
             delete = true;
         }
     }
