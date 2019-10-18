@@ -30,7 +30,7 @@ fn kcore(
     for range in ranges {
         for phdr in &file.phdrs {
             if range.start == phdr.vaddr - start {
-                image.write_block(phdr.offset, Range{start: range.start, end: phdr.memsz})?;
+                image.write_block(phdr.offset, Range{start: range.start, end: range.start + phdr.memsz})?;
             }
         }
     }

@@ -54,7 +54,9 @@ impl Header {
     where
         W: Write,
     {
+        println!("WUT {} {}", self.range.start, self.range.end);
         let bytes = self.encode()?;
+        println!("header: {:?}", bytes);
         dst.write_all(&bytes)?;
         Ok(())
     }
@@ -121,8 +123,9 @@ impl Image {
     pub fn write_block(
         &mut self,
         offset: u64,
-        range: Range<u64>,
+        mut range: Range<u64>,
     ) -> Result<(), Box<dyn Error>> {
+        range.end -= 1;
         let header = Header {
             range,
             version: self.version,

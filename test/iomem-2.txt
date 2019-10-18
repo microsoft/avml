@@ -1,0 +1,24 @@
+00000000-00000fff : Reserved
+00001000-0009ffff : System RAM
+000c0000-000fffff : Reserved
+  000f0000-000fffff : System ROM
+00100000-3eeecfff : System RAM
+  0be00000-0ca01160 : Kernel code
+  0ca01161-0d4396bf : Kernel data
+  0d6ba000-0dbfffff : Kernel bss
+3eeed000-3eef1fff : ACPI Tables
+3ef1b000-3ff9afff : System RAM
+3ffb7000-3ffb8fff : Unknown E820 type
+3ffbb000-3ffbbfff : Unknown E820 type
+3ffbe000-3ffbefff : Unknown E820 type
+3ffc1000-3ffc1fff : Unknown E820 type
+3ffc4000-3ffc5fff : Unknown E820 type
+3ffc8000-3ffc8fff : Unknown E820 type
+3fff3000-3fffafff : ACPI Tables
+3fffb000-3fffefff : ACPI Non-volatile Storage
+3ffff000-3fffffff : System RAM
+40000000-407fffff : 5620e0c7-8062-4dce-aeb7-520c7ef76171
+fec00000-fec00fff : PNP0003:00
+fee00000-fee00fff : Local APIC
+  fee00000-fee00fff : PNP0003:00
+100000000-19fffffff : System RAM
