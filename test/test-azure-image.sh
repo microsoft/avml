@@ -4,7 +4,7 @@
 # Licensed under the MIT License.
 #
 
-set -ex
+set -e
 
 CONFIG=/tmp/test-config.json.`date '+%Y-%m-%d-%H-%M-%S'`.$$
 TOOL_URL=${1}
@@ -14,9 +14,22 @@ REGION=eastus
 GROUP=vm-capture-test-`date '+%Y-%m-%d-%H-%M-%S'`-$$
 VM=$(uuidgen)
 
+LOG=/tmp/$(dd if=/dev/urandom | tr -dc 'a-z0-9' | fold -w 24 | head -n 1).log
+function fail {
+    echo ERROR
+    cat "${LOG}"
+    exit 1
+}
+
+function quiet {
+    rm -f ${LOG}
+    $* 2>> ${LOG} >> ${LOG} && rm ${LOG} || fail
+}
+
 function cleanup {
     rm -f ${CONFIG}
     az group delete -y --no-wait --name ${GROUP} || echo already removed
+    rm -f ${LOG}
 }
 trap cleanup EXIT
 
@@ -24,8 +37,9 @@ echo -n '{"commandToExecute": "./avml --compress /tmp/image.lime", "fileUris": [
 echo -n ${TOOL_URL} >> ${CONFIG}
 echo  '"]}' >> ${CONFIG}
 
-az group create -l ${REGION} -n ${GROUP}
+echo testing ${SKU}
+quiet az group create -l ${REGION} -n ${GROUP}
 IP=$( az vm create -g ${GROUP} --size ${SIZE} -n ${VM} --image ${SKU} --query publicIpAddress -o tsv )
-az vm extension set -g ${GROUP} --vm-name ${VM} --publisher Microsoft.Azure.Extensions -n customScript --settings ${CONFIG}
-ssh-keygen -R ${IP} || echo no existing host key
-scp -oStrictHostKeyChecking=no ${IP}:/tmp/image.lime ./${SKU}.lime
+quiet az vm extension set -g ${GROUP} --vm-name ${VM} --publisher Microsoft.Azure.Extensions -n customScript --settings ${CONFIG}
+ssh-keygen -R ${IP} 2>/dev/null > /dev/null
+quiet scp -oStrictHostKeyChecking=no ${IP}:/tmp/image.lime ./${SKU}.lime

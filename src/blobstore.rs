@@ -1,9 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-use azure::core::errors::AzureError;
 use azure::prelude::*;
-use azure::storage::blob::{BlobBlockType, BlockList};
+use azure_sdk_core::errors::AzureError;
+use azure_sdk_core::prelude::*;
+use azure_sdk_storage_core::prelude::*;
+
 use byteorder::{LittleEndian, WriteBytesExt};
 use retry::{delay::jitter, delay::Exponential, retry, OperationResult};
 use std::cmp;
