@@ -54,9 +54,7 @@ impl Header {
     where
         W: Write,
     {
-        println!("WUT {} {}", self.range.start, self.range.end);
         let bytes = self.encode()?;
-        println!("header: {:?}", bytes);
         dst.write_all(&bytes)?;
         Ok(())
     }
@@ -73,6 +71,12 @@ where
         dst.write_all(&buf)?;
         size -= PAGE_SIZE;
     }
+    if size > 0 {
+        buf.resize(size, 0);
+        src.read_exact(&mut buf)?;
+        dst.write_all(&buf)?;
+    }
+
     Ok(())
 }
 
