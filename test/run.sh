@@ -43,3 +43,5 @@ quiet az storage container create --account-name ${STORAGE} --name ${CONTAINER}
 quiet az storage container set-permission --account-name ${STORAGE} -n ${CONTAINER} --public-access blob
 quiet az storage blob upload --account-name ${STORAGE} --container ${CONTAINER} --name ${DST_PATH} --file ${FILE}
 xargs -P 20 -a ${IMAGES_TXT} -I test-image-name test/test-azure-image.sh ${URL} test-image-name
+
+test/test-conversion.sh
