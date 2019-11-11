@@ -30,7 +30,13 @@ fn kcore(
     for range in ranges {
         for phdr in &file.phdrs {
             if range.start == phdr.vaddr - start {
-                image.write_block(phdr.offset, Range{start: range.start, end: range.start + phdr.memsz})?;
+                image.write_block(
+                    phdr.offset,
+                    Range {
+                        start: range.start,
+                        end: range.start + phdr.memsz,
+                    },
+                )?;
             }
         }
     }
@@ -45,7 +51,19 @@ fn phys(
 ) -> Result<(), Box<dyn Error>> {
     let mut image = avml::image::Image::new(version, mem, filename)?;
     for range in ranges {
-        image.write_block(range.start, range.clone())?;
+        let end = if mem == "/dev/crash" {
+            (range.end >> 12) << 12
+        } else {
+            range.end
+        };
+
+        image.write_block(
+            range.start,
+            Range {
+                start: range.start,
+                end,
+            },
+        )?;
     }
 
     Ok(())

@@ -1,6 +1,6 @@
 [package]
 name = "avml"
-version = "0.1.4"
+version = "0.1.5"
 license = "MIT"
 description = "A portable volatile memory acquisition tool"
 authors = ["avml@microsoft.com"]

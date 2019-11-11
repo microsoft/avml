@@ -23,7 +23,7 @@ impl Header {
         let magic = src.read_u32::<LittleEndian>()?;
         let version = src.read_u32::<LittleEndian>()?;
         let start = src.read_u64::<LittleEndian>()?;
-        let end = src.read_u64::<LittleEndian>()?;
+        let end = src.read_u64::<LittleEndian>()? + 1;
         let padding = src.read_u64::<LittleEndian>()?;
         if padding != 0 {
             return Err(From::from(format!("invalid padding: {}", padding)));
@@ -46,7 +46,7 @@ impl Header {
         };
         let mut bytes = [0; 32];
         LittleEndian::write_u32_into(&[magic, self.version], &mut bytes[..8]);
-        LittleEndian::write_u64_into(&[self.range.start, self.range.end, 0], &mut bytes[8..]);
+        LittleEndian::write_u64_into(&[self.range.start, self.range.end - 1, 0], &mut bytes[8..]);
         Ok(bytes)
     }
 
@@ -86,7 +86,7 @@ where
     W: Write + std::io::Seek,
 {
     header.write(dst)?;
-    let size = 1 + (header.range.end - header.range.start);
+    let size = header.range.end - header.range.start;
     if header.version == 1 {
         copy(size as usize, src, dst)?;
     } else {
@@ -124,12 +124,7 @@ impl Image {
         Ok(Self { version, src, dst })
     }
 
-    pub fn write_block(
-        &mut self,
-        offset: u64,
-        mut range: Range<u64>,
-    ) -> Result<(), Box<dyn Error>> {
-        range.end -= 1;
+    pub fn write_block(&mut self, offset: u64, range: Range<u64>) -> Result<(), Box<dyn Error>> {
         let header = Header {
             range,
             version: self.version,
@@ -155,7 +150,7 @@ mod tests {
         let header = super::Header {
             range: Range {
                 start: 0x1000,
-                end: 0x20000,
+                end: 0x20001,
             },
             version: 1,
         };
@@ -166,7 +161,7 @@ mod tests {
         let header = super::Header {
             range: Range {
                 start: 0x1000,
-                end: 0x20000,
+                end: 0x20001,
             },
             version: 2,
         };
