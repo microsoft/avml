@@ -35,38 +35,61 @@ If the memory source is not specified on the commandline, AVML will iterate over
 
 # Getting Started
 
-To grab a compressed memory image:
+## Capturing a compressed memory image
 
-    avml --compress output.lime
+On the target host:
 
-To upload to Azure Blob Store:
+```
+avml --compress output.lime
+```
 
-    # On a host with az cli credentials
-    EXPIRY=$(date -d '1 day' '+%Y-%m-%dT%H:%MZ') 
-    SAS=$(az storage blob generate-sas --account-name ACCOUNT --container CONTAINER -n test.lime --full-uri --permissions c --output tsv --expiry ${EXPIRY})
+## Capturing a memory image & uploading to Azure Blob Store
 
-    # On the target host
-    avml --sas_url $(SAS) --delete output.lime
+On a secure host with `az cli` credentials, generate a [SAS URL](https://docs.microsoft.com/en-us/azure/storage/common/storage-sas-overview).
+```
+EXPIRY=$(date -d '1 day' '+%Y-%m-%dT%H:%MZ') 
+SAS_URL=$(az storage blob generate-sas --account-name ACCOUNT --container CONTAINER test.lime --full-uri --permissions c --output tsv --expiry ${EXPIRY})
+```
 
-To execute on a VM in Azure using VM Extensions:
+On the target host, execute avml with the generated SAS token.
+```
+avml --sas_url ${SAS_URL} --delete output.lime
+```
 
-    # On a host with az cli credentials, build a config.json containing the following info:
-    {
-        "commandToExecute": "./avml --compress --sas_url <SAS_URL_HERE> --delete",
-        "fileUris": [
-            "https://FULL.URL.TO.AVML.example.com/avml"
-        ]
-    }
-    # Use az cli to execute the customScript extension with the aformentioned config.json
-    az vm extension set -g RESOURCE_GROUP --vm-name VM_NAME --publisher Microsoft.Azure.Extensions -n customScript --settings config.json
+## Capturing a memory image of an Azure VM using VM Extensions
 
+On a secure host with `az cli` credentials, do the following:
 
-To upload to AWS S3:
+1. Generate a SAS URL (see above)
+2. Create `config.json` containing the following information:
+```
+{
+    "commandToExecute": "./avml --compress --sas_url <GENERATED_SAS_URL> --delete",
+    "fileUris": ["https://FULL.URL.TO.AVML.example.com/avml"]
+}
+```
+3. Execute the [customScript](https://docs.microsoft.com/en-us/azure/virtual-machines/extensions/custom-script-linux) extension with the specified `config.json`
+```
+az vm extension set -g RESOURCE_GROUP --vm-name VM_NAME --publisher Microsoft.Azure.Extensions -n customScript --settings config.json
+```
 
-    # Generate presigned URL on secure host
+## To upload to AWS S3 or GCP Cloud Storage
+On a secure host, generate a [S3 pre-signed URL](https://docs.aws.amazon.com/cli/latest/reference/s3/presign.html) or generate a [GCP pre-signed URL](https://cloud.google.com/storage/docs/gsutil/commands/signurl).
 
-    # On the target host
-    avml --put ${URL} --delete output.lime
+On the target host, execute avml with the generated pre-signed URL.
+```
+avml --put ${URL} --delete output.lime
+```
+
+## To decompress an AVML-compressed image
+```
+avml-convert ./compressed.lime ./uncompressed.lime
+```
+
+## To compress an uncompressed LiME image
+```
+avml-convert --compress ./uncompressed.lime ./compressed.lime
+```
 
 # Usage
 
