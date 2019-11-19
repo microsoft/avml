@@ -73,22 +73,22 @@ On a secure host with `az cli` credentials, do the following:
 az vm extension set -g RESOURCE_GROUP --vm-name VM_NAME --publisher Microsoft.Azure.Extensions -n customScript --settings config.json
 ```
 
-## To upload to AWS S3
-
-On a secure host with the AWS cli, generate a [S3 pre-signed URL](https://docs.aws.amazon.com/cli/latest/reference/s3/presign.html).
-
-On the target host, execute avml with the generated pre-signed URL.
-```
-avml --put ${URL} --delete output.lime
-```
-
-## To upload to GCP Cloud Storage
-
-On a secure host with the AWS cli, generate a [GCP pre-signed URL](https://cloud.google.com/storage/docs/gsutil/commands/signurl).
+## To upload to AWS S3 or GCP Cloud Storage
+On a secure host, generate a [S3 pre-signed URL](https://docs.aws.amazon.com/cli/latest/reference/s3/presign.html) or generate a [GCP pre-signed URL](https://cloud.google.com/storage/docs/gsutil/commands/signurl).
 
 On the target host, execute avml with the generated pre-signed URL.
 ```
 avml --put ${URL} --delete output.lime
+```
+
+## To decompress an AVML-compressed image
+```
+avml-convert ./compressed.lime ./uncompressed.lime
+```
+
+## To compress an uncompressed LiME image
+```
+avml-convert --compress ./uncompressed.lime ./compressed.lime
 ```
 
 # Usage
