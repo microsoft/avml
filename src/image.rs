@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
+use std::convert::TryFrom;
 use std::error::Error;
 use std::fs::OpenOptions;
 use std::io::prelude::*;
@@ -65,7 +66,7 @@ where
     R: Read,
     W: Write,
 {
-    let mut buf = vec![0; PAGE_SIZE as usize];
+    let mut buf = vec![0; PAGE_SIZE];
     while size >= PAGE_SIZE {
         src.read_exact(&mut buf)?;
         dst.write_all(&buf)?;
@@ -76,30 +77,58 @@ where
         src.read_exact(&mut buf)?;
         dst.write_all(&buf)?;
     }
-
     Ok(())
 }
 
-pub fn copy_block<R, W>(header: &Header, src: &mut R, mut dst: &mut W) -> Result<(), Box<dyn Error>>
+fn copy_block_impl<R, W>(header: Header, src: &mut R, mut dst: &mut W) -> Result<(), Box<dyn Error>>
 where
     R: Read,
     W: Write + std::io::Seek,
 {
     header.write(dst)?;
-    let size = header.range.end - header.range.start;
+    let size = usize::try_from(header.range.end - header.range.start).expect("invalid block size");
     if header.version == 1 {
-        copy(size as usize, src, dst)?;
+        copy(size, src, dst)?;
     } else {
         let begin = dst.seek(SeekFrom::Current(0))?;
         {
             let mut snap_fh = snap::Writer::new(&mut dst);
-            copy(size as usize, src, &mut snap_fh)?;
+            copy(size, src, &mut snap_fh)?;
         }
         let end = dst.seek(SeekFrom::Current(0))?;
         let mut size_bytes = [0; 8];
         LittleEndian::write_u64_into(&[end - begin], &mut size_bytes);
         dst.write_all(&size_bytes)?;
     }
+    Ok(())
+}
+
+pub fn copy_block<R, W>(mut header: Header, src: &mut R, dst: &mut W) -> Result<(), Box<dyn Error>>
+where
+    R: Read,
+    W: Write + std::io::Seek,
+{
+    if header.version == 2 {
+        let max_size = u64::try_from(100 * 256 * PAGE_SIZE).expect("invalid max page size");
+        while header.range.end - header.range.start > max_size {
+            copy_block_impl(
+                Header {
+                    range: Range {
+                        start: header.range.start,
+                        end: header.range.start + max_size,
+                    },
+                    version: header.version,
+                },
+                src,
+                dst,
+            )?;
+            header.range.start += max_size;
+        }
+    }
+    if header.range.end > header.range.start {
+        copy_block_impl(header, src, dst)?;
+    }
+
     Ok(())
 }
 
@@ -134,7 +163,7 @@ impl Image {
             self.src.seek(SeekFrom::Start(offset))?;
         }
 
-        copy_block(&header, &mut self.src, &mut self.dst)?;
+        copy_block(header, &mut self.src, &mut self.dst)?;
         Ok(())
     }
 }

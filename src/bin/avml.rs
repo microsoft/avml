@@ -5,6 +5,9 @@
 extern crate clap;
 extern crate avml;
 
+#[cfg(feature = "blobstore")]
+use avml::ONE_MB;
+
 use clap::{App, Arg};
 use std::error::Error;
 #[cfg(any(feature = "blobstore", feature = "put"))]
@@ -100,7 +103,7 @@ fn get_mem(src: Option<&str>, dst: &str, version: u32) -> Result<(), Box<dyn Err
     Err(From::from("unable to read physical memory"))
 }
 
-fn run_app() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
     let sources = vec!["/proc/kcore", "/dev/crash", "/dev/mem"];
     let args = App::new(crate_name!())
         .author(crate_authors!())
@@ -169,8 +172,8 @@ fn run_app() -> Result<(), Box<dyn Error>> {
             value_t!(args.value_of("sas_block_size"), usize)?
         } else {
             100
-        } * 1024
-            * 1024;
+        } * ONE_MB;
+
         if let Some(sas_url) = sas_url {
             avml::blobstore::upload_sas(&dst, sas_url, sas_block_size)?;
             delete = true;
@@ -185,14 +188,4 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
-}
-
-fn main() {
-    ::std::process::exit(match run_app() {
-        Ok(_) => 0,
-        Err(err) => {
-            eprintln!("error: {:?}", err);
-            1
-        }
-    });
 }
