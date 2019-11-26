@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+use crate::ONE_MB;
+
 use azure::prelude::*;
 use azure_sdk_core::errors::AzureError;
 use azure_sdk_core::prelude::*;
@@ -9,6 +11,7 @@ use azure_sdk_storage_core::prelude::*;
 use byteorder::{LittleEndian, WriteBytesExt};
 use retry::{delay::jitter, delay::Exponential, retry, OperationResult};
 use std::cmp;
+use std::convert::TryFrom;
 use std::error::Error;
 use std::fs::File;
 use std::io::prelude::*;
@@ -17,7 +20,7 @@ use url::Url;
 
 const BACKOFF: u64 = 100;
 const BACKOFF_COUNT: usize = 100;
-const MAX_BLOCK_SIZE: usize = 1024 * 1024 * 100;
+const MAX_BLOCK_SIZE: usize = ONE_MB * 100;
 
 /// Converts the block index into an block_id
 fn to_id(count: u64) -> Result<Vec<u8>, Box<dyn Error>> {
@@ -52,7 +55,7 @@ pub fn upload_sas(filename: &str, sas: &str, block_size: usize) -> Result<(), Bo
 
     let mut core = Core::new()?;
     let mut file = File::open(filename)?;
-    let size = file.metadata()?.len() as usize;
+    let size = usize::try_from(file.metadata()?.len())?;
     let mut sent = 0;
     let mut blocks = BlockList { blocks: Vec::new() };
     let mut data = vec![0; block_size];

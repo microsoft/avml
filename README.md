@@ -88,7 +88,7 @@ avml-convert ./compressed.lime ./uncompressed.lime
 
 ## To compress an uncompressed LiME image
 ```
-avml-convert --compress ./uncompressed.lime ./compressed.lime
+avml-convert --format lime_compressed ./uncompressed.lime ./compressed.lime
 ```
 
 # Usage
