@@ -13,6 +13,9 @@ pub fn parse(path: &str) -> Result<Vec<std::ops::Range<u64>>, Box<dyn Error>> {
 
     let mut ranges = Vec::new();
     for line in buffer.split_terminator('\n') {
+        if line.starts_with(" ") {
+            continue;
+        }
         if !line.ends_with(" : System RAM") {
             continue;
         }
@@ -53,6 +56,14 @@ mod tests {
             1_056_026_624..1_073_328_127,
             1_073_737_728..1_073_741_823,
             4_294_967_296..6_979_321_855,
+        ];
+        assert_eq!(ranges, expected);
+
+        let ranges = super::parse("test/iomem-3.txt").unwrap();
+        let expected = [
+            65_536..649_215,
+            1_048_576..2_146_303_999,
+            2_146_435_072..2_147_483_647,
         ];
         assert_eq!(ranges, expected);
     }

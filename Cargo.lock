@@ -34,7 +34,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "avml"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "azure_sdk_core 0.20.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "azure_sdk_storage_blob 0.23.1 (registry+https://github.com/rust-lang/crates.io-index)",
