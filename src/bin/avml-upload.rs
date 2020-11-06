@@ -23,8 +23,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             Arg::with_name("sas_url")
                 .long("sas_url")
                 .takes_value(true)
-                .help("Upload via Azure Blob Store upon acquisition")
-                .conflicts_with("url"),
+                .help("Upload via Azure Blob Store"),
             Arg::with_name("sas_block_size")
                 .long("sas_block_size")
                 .takes_value(true)
@@ -32,8 +31,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             Arg::with_name("url")
                 .long("url")
                 .takes_value(true)
-                .help("Upload via HTTP PUT upon acquisition.")
-                .required(false),
+                .help("Upload via HTTP PUT"),
         ])
         .get_matches();
 
@@ -53,6 +51,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     if let Some(sas_url) = sas_url {
         avml::blobstore::upload_sas(&dst, sas_url, sas_block_size)?;
+    }
+
+    if url.is_none() && sas_url.is_none() {
+        return Err(From::from("file was not uploaded"));
     }
 
     Ok(())
