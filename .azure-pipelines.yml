@@ -2,7 +2,7 @@ trigger:
   batch: true
   branches:
     include:
-      - master
+      - main
   tags:
     include:
       - v*
@@ -44,3 +44,9 @@ steps:
   inputs:
     targetPath: target/x86_64-unknown-linux-musl/release/avml-minimal
     artifactName: avml-minimal
+
+- task: PublishPipelineArtifact@0
+  displayName: publish avml-convert
+  inputs:
+    targetPath: target/x86_64-unknown-linux-musl/release/avml-convert
+    artifactName: avml-convert
