@@ -9,6 +9,7 @@ categories = ["command-line-utilities"]
 homepage = "https://github.com/microsoft/avml"
 repository = "https://github.com/microsoft/avml"
 readme = "README.md"
+autobins = true
 
 [features]
 default = ["put", "blobstore"]
@@ -32,3 +33,7 @@ azure_sdk_storage_core  = { version = "0.20.4", optional = true }
 opt-level="z"
 lto=true
 panic="abort"
+
+[[bin]]
+name = "avml-upload"
+required-features = ["put", "blobstore"]
