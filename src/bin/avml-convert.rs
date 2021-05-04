@@ -3,21 +3,14 @@
 
 #[macro_use]
 extern crate clap;
-extern crate avml;
-extern crate byteorder;
-extern crate elf;
-extern crate snap;
 
+use anyhow::Result;
 use avml::ONE_MB;
 use clap::{App, Arg};
 use snap::Reader;
-use std::convert::TryFrom;
-use std::error::Error;
-use std::fs::metadata;
-use std::io::prelude::*;
-use std::io::SeekFrom;
+use std::{convert::TryFrom, fs::metadata, io::prelude::*, io::SeekFrom};
 
-fn convert(src: String, dst: String, compress: bool) -> Result<(), Box<dyn Error>> {
+fn convert(src: String, dst: String, compress: bool) -> Result<()> {
     let src_len = metadata(&src)?.len();
     let mut image = avml::image::Image::new(1, &src, &dst)?;
 
@@ -47,7 +40,7 @@ fn convert(src: String, dst: String, compress: bool) -> Result<(), Box<dyn Error
     Ok(())
 }
 
-fn convert_to_raw(src: String, dst: String) -> Result<(), Box<dyn Error>> {
+fn convert_to_raw(src: String, dst: String) -> Result<()> {
     let src_len = metadata(&src)?.len();
     let mut image = avml::image::Image::new(1, &src, &dst)?;
 
@@ -98,7 +91,7 @@ arg_enum! {
     }
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<()> {
     let default_format = format!("{}", OutputFormat::lime);
     let args = App::new("avml-convert")
         .author(crate_authors!())

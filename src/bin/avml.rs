@@ -3,29 +3,29 @@
 
 #[macro_use]
 extern crate clap;
-extern crate avml;
 
+use anyhow::{anyhow, bail, Context, Result};
 #[cfg(feature = "blobstore")]
 use avml::ONE_MB;
-
 use clap::{App, Arg};
-use std::error::Error;
 #[cfg(any(feature = "blobstore", feature = "put"))]
-use std::fs;
-use std::fs::metadata;
-use std::ops::Range;
+use std::fs::remove_file;
+use std::{fs::metadata, ops::Range};
 
-fn kcore(
-    ranges: &[std::ops::Range<u64>],
-    filename: &str,
-    version: u32,
-) -> Result<(), Box<dyn Error>> {
+fn kcore(ranges: &[std::ops::Range<u64>], filename: &str, version: u32) -> Result<()> {
     if metadata("/proc/kcore")?.len() < 0x2000 {
-        return Err(From::from("locked down kcore"));
+        bail!("locked down kcore");
     }
 
-    let mut image = avml::image::Image::new(version, "/proc/kcore", filename)?;
-    let mut file = elf::File::open_stream(&mut image.src).expect("unable to analyze /proc/kcore");
+    let mut image =
+        avml::image::Image::new(version, "/proc/kcore", filename).with_context(|| {
+            format!(
+                "unable to create image. source: /proc/kcore destination: {}",
+                filename
+            )
+        })?;
+    let mut file = elf::File::open_stream(&mut image.src)
+        .map_err(|e| anyhow!("unable to parse ELF structures from /proc/kcore: {:?}", e))?;
     file.phdrs.retain(|&x| x.progtype == elf::types::PT_LOAD);
     file.phdrs.sort_by(|a, b| a.vaddr.cmp(&b.vaddr));
     let start = file.phdrs[0].vaddr - ranges[0].start;
@@ -46,13 +46,13 @@ fn kcore(
     Ok(())
 }
 
-fn phys(
-    ranges: &[std::ops::Range<u64>],
-    filename: &str,
-    mem: &str,
-    version: u32,
-) -> Result<(), Box<dyn Error>> {
-    let mut image = avml::image::Image::new(version, mem, filename)?;
+fn phys(ranges: &[std::ops::Range<u64>], filename: &str, mem: &str, version: u32) -> Result<()> {
+    let mut image = avml::image::Image::new(version, mem, filename).with_context(|| {
+        format!(
+            "unable to create image. source:{} destination:{}",
+            mem, filename
+        )
+    })?;
     for range in ranges {
         let end = if mem == "/dev/crash" {
             (range.end >> 12) << 12
@@ -60,13 +60,15 @@ fn phys(
             range.end
         };
 
-        image.write_block(
-            range.start,
-            Range {
-                start: range.start,
-                end,
-            },
-        )?;
+        image
+            .write_block(
+                range.start,
+                Range {
+                    start: range.start,
+                    end,
+                },
+            )
+            .with_context(|| format!("unable to write block: {}:{}", range.start, end))?;
     }
 
     Ok(())
@@ -74,36 +76,38 @@ fn phys(
 
 macro_rules! try_method {
     ($func:expr) => {{
-        if $func.is_ok() {
-            return Ok(());
+        match $func {
+            Ok(_) => return Ok(()),
+            Err(err) => err,
         }
     }};
 }
 
-fn get_mem(src: Option<&str>, dst: &str, version: u32) -> Result<(), Box<dyn Error>> {
-    let ranges = avml::iomem::parse("/proc/iomem")?;
+fn get_mem(src: Option<&str>, dst: &str, version: u32) -> Result<()> {
+    let ranges = avml::iomem::parse("/proc/iomem").context("parsing /proc/iomem failed")?;
 
     if let Some(source) = src {
-        let result = match source {
-            "/proc/kcore" => kcore(&ranges, dst, version),
-            "/dev/crash" => phys(&ranges, dst, "/dev/crash", version),
-            "/dev/mem" => phys(&ranges, dst, "/dev/mem", version),
+        match source {
+            "/proc/kcore" => kcore(&ranges, dst, version)?,
+            "/dev/crash" => phys(&ranges, dst, "/dev/crash", version)?,
+            "/dev/mem" => phys(&ranges, dst, "/dev/mem", version)?,
             _ => unimplemented!(),
         };
-        if result.is_err() {
-            eprintln!("failed: {}", source);
-        }
-        return result;
     }
 
-    try_method!(phys(&ranges, dst, "/dev/crash", version));
-    try_method!(kcore(&ranges, dst, version));
-    try_method!(phys(&ranges, dst, "/dev/mem", version));
+    let crash_err = try_method!(phys(&ranges, dst, "/dev/crash", version));
+    let kcore_err = try_method!(kcore(&ranges, dst, version));
+    let devmem_err = try_method!(phys(&ranges, dst, "/dev/mem", version));
 
-    Err(From::from("unable to read physical memory"))
+    eprintln!("unable to read memory");
+    eprintln!("/dev/crash failed: {:?}", crash_err);
+    eprintln!("/proc/kcore failed: {:?}", kcore_err);
+    eprintln!("/dev/mem failed: {:?}", devmem_err);
+
+    bail!("unable to read physical memory")
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<()> {
     let sources = vec!["/proc/kcore", "/dev/crash", "/dev/mem"];
     let args = App::new(crate_name!())
         .author(crate_authors!())
@@ -149,7 +153,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let dst = value_t!(args.value_of("filename"), String)?;
     let version = if args.is_present("compress") { 2 } else { 1 };
 
-    get_mem(src, &dst, version)?;
+    get_mem(src, &dst, version).context("unable to collect memory")?;
 
     #[cfg(any(feature = "blobstore", feature = "put"))]
     let mut delete = false;
@@ -158,10 +162,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     {
         let url = args.value_of("url");
         if let Some(url) = url {
-            avml::upload::put(&dst, url)?;
-            if args.is_present("delete") {
-                fs::remove_file(&dst)?;
-            }
+            avml::upload::put(&dst, url).context("unable to upload via PUT")?;
+            delete = true;
         }
     }
 
@@ -175,7 +177,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         } * ONE_MB;
 
         if let Some(sas_url) = sas_url {
-            avml::blobstore::upload_sas(&dst, sas_url, sas_block_size)?;
+            avml::blobstore::upload_sas(&dst, sas_url, sas_block_size)
+                .context("upload via sas URL failed")?;
             delete = true;
         }
     }
@@ -183,7 +186,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     #[cfg(any(feature = "blobstore", feature = "put"))]
     {
         if delete && args.is_present("delete") {
-            fs::remove_file(&dst)?;
+            remove_file(&dst).context("unable to remove file after PUT")?;
         }
     }
 

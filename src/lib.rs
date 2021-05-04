@@ -1,7 +1,3 @@
-extern crate byteorder;
-extern crate elf;
-extern crate snap;
-
 #[cfg(feature = "put")]
 extern crate reqwest;
 

@@ -1,15 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-use std::error::Error;
-use std::fs::OpenOptions;
-use std::io::prelude::*;
+use anyhow::{bail, Context, Result};
+use std::{fs::OpenOptions, io::prelude::*};
 
 /// Parse /proc/iomem and return System RAM memory ranges
-pub fn parse(path: &str) -> Result<Vec<std::ops::Range<u64>>, Box<dyn Error>> {
-    let mut f = OpenOptions::new().read(true).open(path)?;
+pub fn parse(path: &str) -> Result<Vec<std::ops::Range<u64>>> {
+    let mut f = OpenOptions::new()
+        .read(true)
+        .open(path)
+        .with_context(|| format!("unable to open file: {}", path))?;
     let mut buffer = String::new();
-    f.read_to_string(&mut buffer)?;
+    f.read_to_string(&mut buffer)
+        .with_context(|| format!("unable to read file: {}", path))?;
 
     let mut ranges = Vec::new();
     for line in buffer.split_terminator('\n') {
@@ -29,7 +32,7 @@ pub fn parse(path: &str) -> Result<Vec<std::ops::Range<u64>>, Box<dyn Error>> {
         let start = u64::from_str_radix(start, 16)?;
         let end = u64::from_str_radix(end, 16)?;
         if start == 0 && end == 0 {
-            return Err(From::from("Need CAP_SYS_ADMIN to read /proc/iomem"));
+            bail!("Need CAP_SYS_ADMIN to read /proc/iomem");
         }
         ranges.push(start..end);
     }
