@@ -17,7 +17,7 @@ pub fn put(filename: &str, url: &str) -> Result<(), Box<dyn Error>> {
         .body(file)
         .send()?;
     if res.status() != reqwest::StatusCode::CREATED {
-        return Err(From::from("unable to upload memory to blob store"));
+        return Err(From::from("unable to upload to file"));
     }
     Ok(())
 }

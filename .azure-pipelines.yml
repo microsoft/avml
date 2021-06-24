@@ -51,3 +51,9 @@ steps:
   inputs:
     targetPath: target/x86_64-unknown-linux-musl/release/avml-convert
     artifactName: avml-convert
+
+- task: PublishPipelineArtifact@0
+  displayName: publish avml-upload
+  inputs:
+    targetPath: target/x86_64-unknown-linux-musl/release/avml-upload
+    artifactName: avml-upload
