@@ -11,7 +11,7 @@ or kernel a priori.  No on-target compilation or fingerprinting is needed.
 
 ## Build Status
 
-[![Build Status](https://dev.azure.com/ms/avml/_apis/build/status/microsoft.avml?branchName=master)](https://dev.azure.com/ms/avml/_build/latest?definitionId=157&branchName=master)
+[![Build Status](https://dev.azure.com/ms/avml/_apis/build/status/microsoft.avml?branchName=main)](https://dev.azure.com/ms/avml/_build/latest?definitionId=157&branchName=main)
 
 ## Features
 * Save recorded images to external locations via Azure Blob Store or HTTP PUT
