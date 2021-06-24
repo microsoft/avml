@@ -8,6 +8,7 @@ use std::{
     fs::OpenOptions,
     io::{prelude::*, SeekFrom},
     ops::Range,
+    os::unix::fs::OpenOptionsExt,
 };
 
 const PAGE_SIZE: usize = 0x1000;
@@ -165,6 +166,7 @@ impl Image {
             .open(src_filename)
             .with_context(|| format!("unable to open source file: {}", src_filename))?;
         let dst = OpenOptions::new()
+            .mode(0o600)
             .write(true)
             .create(true)
             .truncate(true)
