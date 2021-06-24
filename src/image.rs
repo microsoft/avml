@@ -5,6 +5,7 @@ use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
 use std::convert::TryFrom;
 use std::error::Error;
 use std::fs::OpenOptions;
+use std::os::unix::fs::OpenOptionsExt;
 use std::io::prelude::*;
 use std::io::SeekFrom;
 use std::ops::Range;
@@ -146,6 +147,7 @@ impl Image {
     ) -> Result<Self, Box<dyn Error>> {
         let src = OpenOptions::new().read(true).open(src_filename)?;
         let dst = OpenOptions::new()
+            .mode(0o600)
             .write(true)
             .create(true)
             .truncate(true)
