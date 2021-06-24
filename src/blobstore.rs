@@ -2,19 +2,13 @@
 // Licensed under the MIT License.
 
 use crate::ONE_MB;
-
+use anyhow::{anyhow, bail, Context, Result};
 use azure::prelude::*;
-use azure_sdk_core::errors::AzureError;
-use azure_sdk_core::prelude::*;
+use azure_sdk_core::{errors::AzureError, prelude::*};
 use azure_sdk_storage_core::prelude::*;
-
 use byteorder::{LittleEndian, WriteBytesExt};
 use retry::{delay::jitter, delay::Exponential, retry, OperationResult};
-use std::cmp;
-use std::convert::TryFrom;
-use std::error::Error;
-use std::fs::File;
-use std::io::prelude::*;
+use std::{cmp, convert::TryFrom, fs::File, io::prelude::*};
 use tokio_core::reactor::Core;
 use url::Url;
 
@@ -23,20 +17,22 @@ const BACKOFF_COUNT: usize = 100;
 const MAX_BLOCK_SIZE: usize = ONE_MB * 100;
 
 /// Converts the block index into an block_id
-fn to_id(count: u64) -> Result<Vec<u8>, Box<dyn Error>> {
+fn to_id(count: u64) -> Result<Vec<u8>> {
     let mut bytes = vec![];
-    bytes.write_u64::<LittleEndian>(count)?;
+    bytes
+        .write_u64::<LittleEndian>(count)
+        .with_context(|| format!("unable to create block_id: {}", count))?;
     Ok(bytes)
 }
 
 /// Parse a SAS token into the relevant components
-fn parse(sas: &str) -> Result<(String, String, String), Box<dyn Error>> {
-    let parsed = Url::parse(sas)?;
+fn parse(sas: &str) -> Result<(String, String, String)> {
+    let parsed = Url::parse(sas).context("unable to parse url")?;
     let account = if let Some(host) = parsed.host_str() {
         let v: Vec<&str> = host.split_terminator('.').collect();
         v[0]
     } else {
-        return Err(From::from("invalid sas token (no account)"));
+        bail!("invalid sas token (no account)");
     };
 
     let path = parsed.path();
@@ -48,14 +44,20 @@ fn parse(sas: &str) -> Result<(String, String, String), Box<dyn Error>> {
 }
 
 /// Upload a file to Azure Blob Store using a fully qualified SAS token
-pub fn upload_sas(filename: &str, sas: &str, block_size: usize) -> Result<(), Box<dyn Error>> {
+pub fn upload_sas(filename: &str, sas: &str, block_size: usize) -> Result<()> {
     let block_size = cmp::min(block_size, MAX_BLOCK_SIZE);
-    let (account, container, path) = parse(sas)?;
-    let client = Client::azure_sas(&account, sas)?;
+    let (account, container, path) = parse(sas).context("unable to parse SAS url")?;
+    let client = Client::azure_sas(&account, sas)
+        .map_err(|e| anyhow!("creating blob client failed: {:?}", e))?;
 
-    let mut core = Core::new()?;
-    let mut file = File::open(filename)?;
-    let size = usize::try_from(file.metadata()?.len())?;
+    let mut core = Core::new().context("unable to create tokio context")?;
+    let mut file = File::open(filename).context("unable to open snapshot")?;
+    let size = usize::try_from(
+        file.metadata()
+            .context("unable to get file metadata")?
+            .len(),
+    )
+    .context("unable to convert file size")?;
     let mut sent = 0;
     let mut blocks = BlockList { blocks: Vec::new() };
     let mut data = vec![0; block_size];
@@ -63,7 +65,8 @@ pub fn upload_sas(filename: &str, sas: &str, block_size: usize) -> Result<(), Bo
         let send_size = cmp::min(block_size, size - sent);
         let block_id = to_id(sent as u64)?;
         data.resize(send_size, 0);
-        file.read_exact(&mut data)?;
+        file.read_exact(&mut data)
+            .context("unable to read image block")?;
 
         retry(
             Exponential::from_millis(BACKOFF)
@@ -88,7 +91,8 @@ pub fn upload_sas(filename: &str, sas: &str, block_size: usize) -> Result<(), Bo
                     },
                 }
             },
-        )?;
+        )
+        .map_err(|x| anyhow!("put_block_list failed: {:?}", x))?;
 
         blocks.blocks.push(BlobBlockType::Uncommitted(block_id));
         sent += send_size;
@@ -116,7 +120,8 @@ pub fn upload_sas(filename: &str, sas: &str, block_size: usize) -> Result<(), Bo
                 },
             }
         },
-    )?;
+    )
+    .map_err(|x| anyhow!("put_block_list failed: {:?}", x))?;
 
     Ok(())
 }
