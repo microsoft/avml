@@ -48,7 +48,7 @@ avml --compress output.lime.compressed
 On the target host:
 
 ```
-avml --compress output.lime
+avml output.lime
 ```
 
 ## Capturing a memory image & uploading to Azure Blob Store
