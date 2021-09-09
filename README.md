@@ -40,7 +40,15 @@ If the memory source is not specified on the commandline, AVML will iterate over
 On the target host:
 
 ```
-avml --compress output.lime
+avml --compress output.lime.compressed
+```
+
+## Capturing an uncompressed memory image
+
+On the target host:
+
+```
+avml output.lime
 ```
 
 ## Capturing a memory image & uploading to Azure Blob Store
