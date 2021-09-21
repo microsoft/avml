@@ -39,6 +39,35 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28b2cd92db5cbd74e8e5028f7e27dd7aa3090e89e4f2a197cc7c8dfb69c7063b"
 
 [[package]]
+name = "argh"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f023c76cd7975f9969f8e29f0e461decbdc7f51048ce43427107a3d192f1c9bf"
+dependencies = [
+ "argh_derive",
+ "argh_shared",
+]
+
+[[package]]
+name = "argh_derive"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "48ad219abc0c06ca788aface2e3a1970587e3413ab70acd20e54b6ec524c1f8f"
+dependencies = [
+ "argh_shared",
+ "heck",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "argh_shared"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38de00daab4eac7d753e97697066238d67ce9d7e2d823ab4f72fe14af29f3f33"
+
+[[package]]
 name = "atty"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -66,11 +95,11 @@ name = "avml"
 version = "0.3.0"
 dependencies = [
  "anyhow",
+ "argh",
  "azure_sdk_core",
  "azure_sdk_storage_blob",
  "azure_sdk_storage_core",
  "byteorder 1.3.4",
- "clap",
  "elf",
  "reqwest",
  "retry",
@@ -253,17 +282,6 @@ dependencies = [
  "num-traits",
  "time",
  "winapi 0.3.9",
-]
-
-[[package]]
-name = "clap"
-version = "2.33.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37e58ac78573c40708d45522f0d80fa2f01cc4f9b4e2bf749807255454312002"
-dependencies = [
- "bitflags",
- "textwrap",
- "unicode-width",
 ]
 
 [[package]]
@@ -547,6 +565,15 @@ name = "hashbrown"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d7afe4a420e3fe79967a00898cc1f4db7c8a49a9333a29f8a4bd76a253d5cd04"
+
+[[package]]
+name = "heck"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d621efb26863f0e9924c6ac577e8275e5e6b77455db64ffa6c65c904e9e132c"
+dependencies = [
+ "unicode-segmentation",
+]
 
 [[package]]
 name = "hermit-abi"
@@ -1350,15 +1377,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "textwrap"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d326610f408c7a4eb6f51c37c330e496b08506c9457c9d34287ecc38809fb060"
-dependencies = [
- "unicode-width",
-]
-
-[[package]]
 name = "thread_local"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1651,10 +1669,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "unicode-width"
-version = "0.1.8"
+name = "unicode-segmentation"
+version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9337591893a19b88d8d87f2cec1e73fad5cdfd10e5a6f349f498ad6ea2ffb1e3"
+checksum = "8895849a949e7845e06bd6dc1aa51731a103c42707010a5b591c0038fb73385b"
 
 [[package]]
 name = "unicode-xid"

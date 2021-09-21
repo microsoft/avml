@@ -16,7 +16,7 @@ pub fn parse(path: &str) -> Result<Vec<std::ops::Range<u64>>> {
 
     let mut ranges = Vec::new();
     for line in buffer.split_terminator('\n') {
-        if line.starts_with(" ") {
+        if line.starts_with(' ') {
             continue;
         }
         if !line.ends_with(" : System RAM") {

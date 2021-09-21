@@ -1,16 +1,48 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#[macro_use]
-extern crate clap;
-
 use anyhow::{anyhow, bail, Context, Result};
+use argh::FromArgs;
 #[cfg(feature = "blobstore")]
 use avml::ONE_MB;
-use clap::{App, Arg};
 #[cfg(any(feature = "blobstore", feature = "put"))]
 use std::fs::remove_file;
 use std::{fs::metadata, ops::Range};
+
+#[derive(FromArgs, Debug)]
+/// A portable volatile memory acquisition tool for Linux
+struct Config {
+    /// compress via snappy
+    #[argh(switch)]
+    compress: bool,
+
+    /// memory source
+    #[argh(option)]
+    source: Option<String>,
+
+    /// upload via HTTP PUT upon acquisition
+    #[cfg(feature = "put")]
+    #[argh(option)]
+    url: Option<String>,
+
+    /// delete upon successful upload
+    #[argh(switch)]
+    delete: bool,
+
+    /// upload via Azure Blob Store upon acquisition
+    #[cfg(feature = "blobstore")]
+    #[argh(option)]
+    sas_url: Option<String>,
+
+    /// specify maximum block size in MiB
+    #[cfg(feature = "blobstore")]
+    #[argh(option, default = "100")]
+    sas_block_size: usize,
+
+    /// name of the file to write to on local system
+    #[argh(positional)]
+    filename: String,
+}
 
 fn kcore(ranges: &[std::ops::Range<u64>], filename: &str, version: u32) -> Result<()> {
     if metadata("/proc/kcore")?.len() < 0x2000 {
@@ -83,11 +115,11 @@ macro_rules! try_method {
     }};
 }
 
-fn get_mem(src: Option<&str>, dst: &str, version: u32) -> Result<()> {
+fn get_mem(src: Option<&String>, dst: &str, version: u32) -> Result<()> {
     let ranges = avml::iomem::parse("/proc/iomem").context("parsing /proc/iomem failed")?;
 
     if let Some(source) = src {
-        match source {
+        match source.as_ref() {
             "/proc/kcore" => kcore(&ranges, dst, version)?,
             "/dev/crash" => phys(&ranges, dst, "/dev/crash", version)?,
             "/dev/mem" => phys(&ranges, dst, "/dev/mem", version)?,
@@ -108,76 +140,29 @@ fn get_mem(src: Option<&str>, dst: &str, version: u32) -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    let sources = vec!["/proc/kcore", "/dev/crash", "/dev/mem"];
-    let args = App::new(crate_name!())
-        .author(crate_authors!())
-        .about(crate_description!())
-        .version(crate_version!())
-        .args(&[
-            Arg::with_name("compress")
-                .long("compress")
-                .help("compress pages via snappy"),
-            Arg::with_name("filename")
-                .help("name of the file to write to on local system")
-                .required(true),
-            Arg::with_name("source")
-                .long("source")
-                .takes_value(true)
-                .possible_values(&sources)
-                .help("specify input source"),
-            #[cfg(feature = "blobstore")]
-            Arg::with_name("sas_url")
-                .long("sas_url")
-                .takes_value(true)
-                .help("Upload via Azure Blob Store upon acquisition")
-                .conflicts_with("url"),
-            #[cfg(feature = "blobstore")]
-            Arg::with_name("sas_block_size")
-                .long("sas_block_size")
-                .takes_value(true)
-                .help("specify maximum block size in MiB"),
-            #[cfg(feature = "put")]
-            Arg::with_name("url")
-                .long("url")
-                .takes_value(true)
-                .help("Upload via HTTP PUT upon acquisition.")
-                .required(false),
-            #[cfg(any(feature = "blobstore", feature = "put"))]
-            Arg::with_name("delete")
-                .long("delete")
-                .help("delete upon successful upload"),
-        ])
-        .get_matches();
+    let config: Config = argh::from_env();
 
-    let src = args.value_of("source");
-    let dst = value_t!(args.value_of("filename"), String)?;
-    let version = if args.is_present("compress") { 2 } else { 1 };
-
-    get_mem(src, &dst, version).context("unable to collect memory")?;
+    let version = if config.compress { 2 } else { 1 };
+    get_mem(config.source.as_ref(), &config.filename, version)
+        .context("unable to acquire memory")?;
 
     #[cfg(any(feature = "blobstore", feature = "put"))]
     let mut delete = false;
 
     #[cfg(feature = "put")]
     {
-        let url = args.value_of("url");
-        if let Some(url) = url {
-            avml::upload::put(&dst, url).context("unable to upload via PUT")?;
+        if let Some(url) = config.url {
+            avml::upload::put(&config.filename, &url).context("unable to upload via PUT")?;
             delete = true;
         }
     }
 
     #[cfg(feature = "blobstore")]
     {
-        let sas_url = args.value_of("sas_url");
-        let sas_block_size = if args.is_present("sas_block_size") {
-            value_t!(args.value_of("sas_block_size"), usize)?
-        } else {
-            100
-        } * ONE_MB;
+        let sas_block_size = config.sas_block_size * ONE_MB;
 
-        if let Some(sas_url) = sas_url {
-            avml::blobstore::upload_sas(&dst, sas_url, sas_block_size)
+        if let Some(sas_url) = config.sas_url {
+            avml::blobstore::upload_sas(&config.filename, &sas_url, sas_block_size)
                 .context("upload via sas URL failed")?;
             delete = true;
         }
@@ -185,8 +170,8 @@ fn main() -> Result<()> {
 
     #[cfg(any(feature = "blobstore", feature = "put"))]
     {
-        if delete && args.is_present("delete") {
-            remove_file(&dst).context("unable to remove file after PUT")?;
+        if delete && config.delete {
+            remove_file(&config.filename).context("unable to remove file after PUT")?;
         }
     }
 
