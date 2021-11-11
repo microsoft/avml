@@ -7,7 +7,11 @@ use argh::FromArgs;
 use avml::ONE_MB;
 #[cfg(any(feature = "blobstore", feature = "put"))]
 use std::fs::remove_file;
-use std::{fs::metadata, ops::Range};
+use std::{
+    fs::metadata,
+    ops::Range,
+    path::{Path, PathBuf},
+};
 
 #[derive(FromArgs)]
 /// A portable volatile memory acquisition tool for Linux
@@ -42,7 +46,7 @@ struct Config {
 
     /// name of the file to write to on local system
     #[argh(positional)]
-    filename: String,
+    filename: PathBuf,
 }
 
 enum Source {
@@ -64,16 +68,16 @@ impl ::std::str::FromStr for Source {
     }
 }
 
-fn kcore(ranges: &[std::ops::Range<u64>], filename: &str, version: u32) -> Result<()> {
+fn kcore(ranges: &[std::ops::Range<u64>], filename: &Path, version: u32) -> Result<()> {
     if metadata("/proc/kcore")?.len() < 0x2000 {
         bail!("locked down kcore");
     }
 
-    let mut image =
-        avml::image::Image::new(version, "/proc/kcore", filename).with_context(|| {
+    let mut image = avml::image::Image::new(version, Path::new("/proc/kcore"), filename)
+        .with_context(|| {
             format!(
                 "unable to create image. source: /proc/kcore destination: {}",
-                filename
+                filename.display()
             )
         })?;
     let mut file = elf::File::open_stream(&mut image.src)
@@ -98,15 +102,16 @@ fn kcore(ranges: &[std::ops::Range<u64>], filename: &str, version: u32) -> Resul
     Ok(())
 }
 
-fn phys(ranges: &[std::ops::Range<u64>], filename: &str, mem: &str, version: u32) -> Result<()> {
+fn phys(ranges: &[std::ops::Range<u64>], filename: &Path, mem: &Path, version: u32) -> Result<()> {
     let mut image = avml::image::Image::new(version, mem, filename).with_context(|| {
         format!(
             "unable to create image. source:{} destination:{}",
-            mem, filename
+            mem.display(),
+            filename.display()
         )
     })?;
     for range in ranges {
-        let end = if mem == "/dev/crash" {
+        let end = if mem == Path::new("/dev/crash") {
             (range.end >> 12) << 12
         } else {
             range.end
@@ -135,20 +140,21 @@ macro_rules! try_method {
     }};
 }
 
-fn get_mem(src: Option<&Source>, dst: &str, version: u32) -> Result<()> {
-    let ranges = avml::iomem::parse("/proc/iomem").context("parsing /proc/iomem failed")?;
+fn get_mem(src: Option<&Source>, dst: &Path, version: u32) -> Result<()> {
+    let ranges =
+        avml::iomem::parse(Path::new("/proc/iomem")).context("parsing /proc/iomem failed")?;
 
     if let Some(source) = src {
         match source {
             Source::ProcKcore => kcore(&ranges, dst, version)?,
-            Source::DevCrash => phys(&ranges, dst, "/dev/crash", version)?,
-            Source::DevMem => phys(&ranges, dst, "/dev/mem", version)?,
+            Source::DevCrash => phys(&ranges, dst, Path::new("/dev/crash"), version)?,
+            Source::DevMem => phys(&ranges, dst, Path::new("/dev/mem"), version)?,
         };
     }
 
-    let crash_err = try_method!(phys(&ranges, dst, "/dev/crash", version));
+    let crash_err = try_method!(phys(&ranges, dst, Path::new("/dev/crash"), version));
     let kcore_err = try_method!(kcore(&ranges, dst, version));
-    let devmem_err = try_method!(phys(&ranges, dst, "/dev/mem", version));
+    let devmem_err = try_method!(phys(&ranges, dst, Path::new("/dev/mem"), version));
 
     eprintln!("unable to read memory");
     eprintln!("/dev/crash failed: {:?}", crash_err);
