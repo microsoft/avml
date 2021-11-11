@@ -7,7 +7,7 @@ use std::fs::File;
 
 /// Upload a file via HTTP PUT
 #[cfg(feature = "put")]
-pub fn put(filename: &str, url: &str) -> Result<()> {
+pub fn put(filename: &str, url: reqwest::Url) -> Result<()> {
     let file = File::open(&filename)
         .with_context(|| format!("unable to open image file: {}", filename))?;
 

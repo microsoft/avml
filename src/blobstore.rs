@@ -26,16 +26,15 @@ fn to_id(count: u64) -> Result<Vec<u8>> {
 }
 
 /// Parse a SAS token into the relevant components
-fn parse(sas: &str) -> Result<(String, String, String)> {
-    let parsed = Url::parse(sas).context("unable to parse url")?;
-    let account = if let Some(host) = parsed.host_str() {
+fn parse(sas: &Url) -> Result<(String, String, String)> {
+    let account = if let Some(host) = sas.host_str() {
         let v: Vec<&str> = host.split_terminator('.').collect();
         v[0]
     } else {
         bail!("invalid sas token (no account)");
     };
 
-    let path = parsed.path();
+    let path = sas.path();
     let mut v: Vec<&str> = path.split_terminator('/').collect();
     v.remove(0);
     let container = v.remove(0);
@@ -44,10 +43,10 @@ fn parse(sas: &str) -> Result<(String, String, String)> {
 }
 
 /// Upload a file to Azure Blob Store using a fully qualified SAS token
-pub fn upload_sas(filename: &str, sas: &str, block_size: usize) -> Result<()> {
+pub fn upload_sas(filename: &str, sas: &Url, block_size: usize) -> Result<()> {
     let block_size = cmp::min(block_size, MAX_BLOCK_SIZE);
     let (account, container, path) = parse(sas).context("unable to parse SAS url")?;
-    let client = Client::azure_sas(&account, sas)
+    let client = Client::azure_sas(&account, sas.as_str())
         .map_err(|e| anyhow!("creating blob client failed: {:?}", e))?;
 
     let mut core = Core::new().context("unable to create tokio context")?;

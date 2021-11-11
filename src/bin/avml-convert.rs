@@ -1,12 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#[macro_use]
-extern crate clap;
-
-use anyhow::Result;
+use anyhow::{bail, Result};
+use argh::FromArgs;
 use avml::ONE_MB;
-use clap::{App, Arg};
 use snap::Reader;
 use std::{convert::TryFrom, fs::metadata, io::prelude::*, io::SeekFrom};
 
@@ -82,45 +79,49 @@ fn convert_to_raw(src: String, dst: String) -> Result<()> {
     Ok(())
 }
 
-arg_enum! {
-    #[allow(non_camel_case_types)]
-    pub enum OutputFormat {
-        raw,
-        lime,
-        lime_compressed
+#[derive(FromArgs)]
+/// AVML compress/decompress tool
+struct Config {
+    /// specify output format [possible values: raw, lime, lime_compressed.  Default: lime]
+    #[argh(option, default = "Format::Lime")]
+    format: Format,
+
+    /// name of the source file to read to on local system
+    #[argh(positional)]
+    source: String,
+
+    /// name of the destination file to write to on local system
+    #[argh(positional)]
+    destination: String,
+}
+
+enum Format {
+    Raw,
+    Lime,
+    LimeCompressed,
+}
+
+impl ::std::str::FromStr for Format {
+    type Err = anyhow::Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let x = match s {
+            "raw" => Self::Raw,
+            "lime" => Self::Lime,
+            "lime_compressed" => Self::LimeCompressed,
+            _ => bail!("unsupported format"),
+        };
+        Ok(x)
     }
 }
 
 fn main() -> Result<()> {
-    let default_format = format!("{}", OutputFormat::lime);
-    let args = App::new("avml-convert")
-        .author(crate_authors!())
-        .about("AVML compress/decompress tool")
-        .version(crate_version!())
-        .args(&[
-            Arg::with_name("format")
-                .long("format")
-                .help("output format")
-                .takes_value(true)
-                .default_value(&default_format)
-                .possible_values(&OutputFormat::variants()),
-            Arg::with_name("source")
-                .help("name of the source file to read to on local system")
-                .required(true),
-            Arg::with_name("destination")
-                .help("name of the destination file to write to on local system")
-                .required(true),
-        ])
-        .get_matches();
+    let config: Config = argh::from_env();
 
-    let src = value_t!(args.value_of("source"), String)?;
-    let dst = value_t!(args.value_of("destination"), String)?;
-
-    let format = value_t!(args.value_of("format"), OutputFormat)?;
-
-    match format {
-        OutputFormat::raw => convert_to_raw(src, dst),
-        OutputFormat::lime => convert(src, dst, false),
-        OutputFormat::lime_compressed => convert(src, dst, true),
+    match config.format {
+        Format::Raw => convert_to_raw(config.source, config.destination)?,
+        Format::Lime => convert(config.source, config.destination, false)?,
+        Format::LimeCompressed => convert(config.source, config.destination, true)?,
     }
+
+    Ok(())
 }
