@@ -9,30 +9,31 @@ use avml::ONE_MB;
 use std::fs::remove_file;
 use std::{fs::metadata, ops::Range};
 
-#[derive(FromArgs, Debug)]
+#[derive(FromArgs)]
 /// A portable volatile memory acquisition tool for Linux
 struct Config {
     /// compress via snappy
     #[argh(switch)]
     compress: bool,
 
-    /// memory source
+    /// specify input source [possible values: /proc/kcore, /dev/crash, /dev/mem]
     #[argh(option)]
-    source: Option<String>,
+    source: Option<Source>,
 
     /// upload via HTTP PUT upon acquisition
     #[cfg(feature = "put")]
     #[argh(option)]
-    url: Option<String>,
+    url: Option<reqwest::Url>,
 
     /// delete upon successful upload
+    #[cfg(any(feature = "blobstore", feature = "put"))]
     #[argh(switch)]
     delete: bool,
 
     /// upload via Azure Blob Store upon acquisition
     #[cfg(feature = "blobstore")]
     #[argh(option)]
-    sas_url: Option<String>,
+    sas_url: Option<url::Url>,
 
     /// specify maximum block size in MiB
     #[cfg(feature = "blobstore")]
@@ -42,6 +43,25 @@ struct Config {
     /// name of the file to write to on local system
     #[argh(positional)]
     filename: String,
+}
+
+enum Source {
+    DevCrash,
+    DevMem,
+    ProcKcore,
+}
+
+impl ::std::str::FromStr for Source {
+    type Err = anyhow::Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let x = match s {
+            "/dev/crash" => Self::DevCrash,
+            "/dev/mem" => Self::DevMem,
+            "/proc/kcore" => Self::ProcKcore,
+            _ => bail!("unsupported format"),
+        };
+        Ok(x)
+    }
 }
 
 fn kcore(ranges: &[std::ops::Range<u64>], filename: &str, version: u32) -> Result<()> {
@@ -115,15 +135,14 @@ macro_rules! try_method {
     }};
 }
 
-fn get_mem(src: Option<&String>, dst: &str, version: u32) -> Result<()> {
+fn get_mem(src: Option<&Source>, dst: &str, version: u32) -> Result<()> {
     let ranges = avml::iomem::parse("/proc/iomem").context("parsing /proc/iomem failed")?;
 
     if let Some(source) = src {
-        match source.as_ref() {
-            "/proc/kcore" => kcore(&ranges, dst, version)?,
-            "/dev/crash" => phys(&ranges, dst, "/dev/crash", version)?,
-            "/dev/mem" => phys(&ranges, dst, "/dev/mem", version)?,
-            _ => unimplemented!(),
+        match source {
+            Source::ProcKcore => kcore(&ranges, dst, version)?,
+            Source::DevCrash => phys(&ranges, dst, "/dev/crash", version)?,
+            Source::DevMem => phys(&ranges, dst, "/dev/mem", version)?,
         };
     }
 
@@ -152,7 +171,7 @@ fn main() -> Result<()> {
     #[cfg(feature = "put")]
     {
         if let Some(url) = config.url {
-            avml::upload::put(&config.filename, &url).context("unable to upload via PUT")?;
+            avml::upload::put(&config.filename, url).context("unable to upload via PUT")?;
             delete = true;
         }
     }

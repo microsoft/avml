@@ -7,10 +7,6 @@ use avml::ONE_MB;
 use snap::Reader;
 use std::{convert::TryFrom, fs::metadata, io::prelude::*, io::SeekFrom};
 
-const LIME: &str = "lime";
-const LIME_COMPRESSED: &str = "lime_compressed";
-const RAW: &str = "raw";
-
 fn convert(src: String, dst: String, compress: bool) -> Result<()> {
     let src_len = metadata(&src)?.len();
     let mut image = avml::image::Image::new(1, &src, &dst)?;
@@ -83,35 +79,12 @@ fn convert_to_raw(src: String, dst: String) -> Result<()> {
     Ok(())
 }
 
-#[derive(FromArgs, Debug)]
+#[derive(FromArgs)]
 /// AVML compress/decompress tool
 struct Config {
-    /// compress via snappy
-    #[argh(switch)]
-    compress: bool,
-
-    /// output format
-    #[argh(option, default = "LIME.to_string()")]
-    format: String,
-
-    /// upload via HTTP PUT upon acquisition
-    #[cfg(feature = "put")]
-    #[argh(option)]
-    url: Option<String>,
-
-    /// delete upon successful upload
-    #[argh(switch)]
-    delete: bool,
-
-    /// upload via Azure Blob Store upon acquisition
-    #[cfg(feature = "blobstore")]
-    #[argh(option)]
-    sas_url: Option<String>,
-
-    /// specify maximum block size in MiB
-    #[cfg(feature = "blobstore")]
-    #[argh(option, default = "100")]
-    sas_block_size: usize,
+    /// specify output format [possible values: raw, lime, lime_compressed.  Default: lime]
+    #[argh(option, default = "Format::Lime")]
+    format: Format,
 
     /// name of the source file to read to on local system
     #[argh(positional)]
@@ -122,18 +95,32 @@ struct Config {
     destination: String,
 }
 
+enum Format {
+    Raw,
+    Lime,
+    LimeCompressed,
+}
+
+impl ::std::str::FromStr for Format {
+    type Err = anyhow::Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let x = match s {
+            "raw" => Self::Raw,
+            "lime" => Self::Lime,
+            "lime_compressed" => Self::LimeCompressed,
+            _ => bail!("unsupported format"),
+        };
+        Ok(x)
+    }
+}
+
 fn main() -> Result<()> {
     let config: Config = argh::from_env();
 
-    match config.format.as_ref() {
-        RAW => convert_to_raw(config.source, config.destination)?,
-        LIME => convert(config.source, config.destination, false)?,
-        LIME_COMPRESSED => convert(config.source, config.destination, true)?,
-        _ => bail!(
-            "unsupported format: {}.  Supported formats {}",
-            config.format,
-            &[RAW, LIME, LIME_COMPRESSED].join(", ")
-        ),
+    match config.format {
+        Format::Raw => convert_to_raw(config.source, config.destination)?,
+        Format::Lime => convert(config.source, config.destination, false)?,
+        Format::LimeCompressed => convert(config.source, config.destination, true)?,
     }
 
     Ok(())
