@@ -2,23 +2,39 @@
 // Licensed under the MIT License.
 
 use anyhow::{bail, Context, Result};
-use reqwest;
-use std::{fs::File, path::Path};
+use reqwest::{Body, Client, StatusCode};
+use std::path::Path;
+use tokio::fs::File;
+use tokio_util::codec::{BytesCodec, FramedRead};
+use url::Url;
 
 /// Upload a file via HTTP PUT
 #[cfg(feature = "put")]
-pub fn put(filename: &Path, url: reqwest::Url) -> Result<()> {
+pub async fn put(filename: &Path, url: &Url) -> Result<()> {
     let file = File::open(&filename)
+        .await
         .with_context(|| format!("unable to open image file: {}", filename.display()))?;
 
-    let client = reqwest::Client::new();
+    let size = file
+        .metadata()
+        .await
+        .context("unable to get file size")?
+        .len();
+
+    let stream = FramedRead::new(file, BytesCodec::new());
+    let body = Body::wrap_stream(stream);
+
+    let client = Client::new();
     let res = client
-        .put(url)
+        .put(url.clone())
         .header("x-ms-blob-type", "BlockBlob")
-        .body(file)
+        .header("Content-Length", size)
+        .body(body)
         .send()
+        .await
         .context("unable to PUT file")?;
-    if res.status() != reqwest::StatusCode::CREATED {
+
+    if res.status() != StatusCode::CREATED {
         bail!("unable to upload memory to blob store");
     }
     Ok(())
