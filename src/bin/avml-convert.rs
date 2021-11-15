@@ -1,23 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#[macro_use]
-extern crate clap;
-extern crate avml;
-extern crate byteorder;
-extern crate elf;
-extern crate snap;
-
+use anyhow::{bail, Error, Result};
+use argh::FromArgs;
 use avml::ONE_MB;
-use clap::{App, Arg};
-use snap::Reader;
-use std::convert::TryFrom;
-use std::error::Error;
-use std::fs::metadata;
-use std::io::prelude::*;
-use std::io::SeekFrom;
+use snap::read::FrameDecoder;
+use std::{
+    convert::TryFrom, fs::metadata, io::prelude::*, io::SeekFrom, path::PathBuf, str::FromStr,
+};
 
-fn convert(src: String, dst: String, compress: bool) -> Result<(), Box<dyn Error>> {
+fn convert(src: PathBuf, dst: PathBuf, compress: bool) -> Result<()> {
     let src_len = metadata(&src)?.len();
     let mut image = avml::image::Image::new(1, &src, &dst)?;
 
@@ -36,7 +28,7 @@ fn convert(src: String, dst: String, compress: bool) -> Result<(), Box<dyn Error
                 avml::image::copy_block(new_header, &mut image.src, &mut image.dst)?;
             }
             2 => {
-                let mut reader = Reader::new(&image.src);
+                let mut reader = FrameDecoder::new(&image.src);
                 avml::image::copy_block(new_header, &mut reader, &mut image.dst)?;
                 image.src.seek(SeekFrom::Current(8))?;
             }
@@ -47,7 +39,7 @@ fn convert(src: String, dst: String, compress: bool) -> Result<(), Box<dyn Error
     Ok(())
 }
 
-fn convert_to_raw(src: String, dst: String) -> Result<(), Box<dyn Error>> {
+fn convert_to_raw(src: PathBuf, dst: PathBuf) -> Result<()> {
     let src_len = metadata(&src)?.len();
     let mut image = avml::image::Image::new(1, &src, &dst)?;
 
@@ -78,7 +70,7 @@ fn convert_to_raw(src: String, dst: String) -> Result<(), Box<dyn Error>> {
                 avml::image::copy(size, &mut image.src, &mut image.dst)?;
             }
             2 => {
-                let mut reader = Reader::new(&image.src);
+                let mut reader = FrameDecoder::new(&image.src);
                 avml::image::copy(size, &mut reader, &mut image.dst)?;
                 image.src.seek(SeekFrom::Current(8))?;
             }
@@ -89,45 +81,59 @@ fn convert_to_raw(src: String, dst: String) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-arg_enum! {
-    #[allow(non_camel_case_types)]
-    pub enum OutputFormat {
-        raw,
-        lime,
-        lime_compressed
+#[derive(FromArgs)]
+/// AVML compress/decompress tool
+struct Config {
+    /// specify output format [possible values: raw, lime, lime_compressed.  Default: lime]
+    #[argh(option, default = "Format::Lime")]
+    source_format: Format,
+
+    /// specify output format [possible values: raw, lime, lime_compressed.  Default: lime]
+    #[argh(option, default = "Format::Lime")]
+    format: Format,
+
+    /// name of the source file to read to on local system
+    #[argh(positional)]
+    src: PathBuf,
+
+    /// name of the destination file to write to on local system
+    #[argh(positional)]
+    dst: PathBuf,
+}
+
+enum Format {
+    Raw,
+    Lime,
+    LimeCompressed,
+}
+
+impl FromStr for Format {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let x = match s {
+            "raw" => Self::Raw,
+            "lime" => Self::Lime,
+            "lime_compressed" => Self::LimeCompressed,
+            _ => bail!("unsupported format"),
+        };
+        Ok(x)
     }
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
-    let default_format = format!("{}", OutputFormat::lime);
-    let args = App::new("avml-convert")
-        .author(crate_authors!())
-        .about("AVML compress/decompress tool")
-        .version(crate_version!())
-        .args(&[
-            Arg::with_name("format")
-                .long("format")
-                .help("output format")
-                .takes_value(true)
-                .default_value(&default_format)
-                .possible_values(&OutputFormat::variants()),
-            Arg::with_name("source")
-                .help("name of the source file to read to on local system")
-                .required(true),
-            Arg::with_name("destination")
-                .help("name of the destination file to write to on local system")
-                .required(true),
-        ])
-        .get_matches();
+fn main() -> Result<()> {
+    let config: Config = argh::from_env();
 
-    let src = value_t!(args.value_of("source"), String)?;
-    let dst = value_t!(args.value_of("destination"), String)?;
-
-    let format = value_t!(args.value_of("format"), OutputFormat)?;
-
-    match format {
-        OutputFormat::raw => convert_to_raw(src, dst),
-        OutputFormat::lime => convert(src, dst, false),
-        OutputFormat::lime_compressed => convert(src, dst, true),
+    match (config.source_format, config.format) {
+        (Format::Lime | Format::LimeCompressed, Format::Raw) => {
+            convert_to_raw(config.src, config.dst)
+        }
+        (Format::Lime, Format::LimeCompressed) => convert(config.src, config.dst, true),
+        (Format::LimeCompressed, Format::Lime) => convert(config.src, config.dst, false),
+        (Format::Lime, Format::Lime)
+        | (Format::LimeCompressed, Format::LimeCompressed)
+        | (Format::Raw, Format::Raw) => bail!("no conversion required"),
+        (Format::Raw, Format::Lime | Format::LimeCompressed) => {
+            bail!("converting from raw not supported")
+        }
     }
 }

@@ -2,121 +2,130 @@
 // Licensed under the MIT License.
 
 use crate::ONE_MB;
-
-use azure::prelude::*;
-use azure_sdk_core::errors::AzureError;
-use azure_sdk_core::prelude::*;
-use azure_sdk_storage_core::prelude::*;
-
-use byteorder::{LittleEndian, WriteBytesExt};
-use retry::{delay::jitter, delay::Exponential, retry, OperationResult};
-use std::cmp;
-use std::convert::TryFrom;
-use std::error::Error;
-use std::fs::File;
-use std::io::prelude::*;
-use tokio_core::reactor::Core;
+use anyhow::{anyhow, bail, Context, Result};
+use azure_core::prelude::*;
+use azure_storage::blob::prelude::*;
+use azure_storage::core::prelude::*;
+use backoff::{future::retry, ExponentialBackoff};
+use bytes::{Bytes, BytesMut};
+use std::{cmp, convert::TryFrom, path::Path};
+use tokio::{fs::File, io::AsyncReadExt};
 use url::Url;
 
-const BACKOFF: u64 = 100;
-const BACKOFF_COUNT: usize = 100;
 const MAX_BLOCK_SIZE: usize = ONE_MB * 100;
 
-/// Converts the block index into an block_id
-fn to_id(count: u64) -> Result<Vec<u8>, Box<dyn Error>> {
-    let mut bytes = vec![];
-    bytes.write_u64::<LittleEndian>(count)?;
-    Ok(bytes)
+struct SasToken {
+    account: String,
+    container: String,
+    path: String,
+    token: String,
 }
 
-/// Parse a SAS token into the relevant components
-fn parse(sas: &str) -> Result<(String, String, String), Box<dyn Error>> {
-    let parsed = Url::parse(sas)?;
-    let account = if let Some(host) = parsed.host_str() {
-        let v: Vec<&str> = host.split_terminator('.').collect();
-        v[0]
-    } else {
-        return Err(From::from("invalid sas token (no account)"));
-    };
+impl TryFrom<&Url> for SasToken {
+    type Error = anyhow::Error;
 
-    let path = parsed.path();
-    let mut v: Vec<&str> = path.split_terminator('/').collect();
-    v.remove(0);
-    let container = v.remove(0);
-    let blob_path = v.join("/");
-    Ok((account.to_string(), container.to_string(), blob_path))
+    fn try_from(url: &Url) -> Result<Self> {
+        let account = if let Some(host) = url.host_str() {
+            let v: Vec<&str> = host.split_terminator('.').collect();
+            v[0].to_string()
+        } else {
+            bail!("invalid sas token (no account)");
+        };
+
+        let token = if let Some(token) = url.query() {
+            token.to_string()
+        } else {
+            bail!("invalid SAS token");
+        };
+
+        let path = url.path();
+        let mut v: Vec<&str> = path.split_terminator('/').collect();
+        v.remove(0);
+        let container = v.remove(0).to_string();
+        let path = v.join("/");
+        Ok(Self {
+            account,
+            container,
+            path,
+            token,
+        })
+    }
 }
 
 /// Upload a file to Azure Blob Store using a fully qualified SAS token
-pub fn upload_sas(filename: &str, sas: &str, block_size: usize) -> Result<(), Box<dyn Error>> {
-    let block_size = cmp::min(block_size, MAX_BLOCK_SIZE);
-    let (account, container, path) = parse(sas)?;
-    let client = Client::azure_sas(&account, sas)?;
+pub async fn upload_sas(filename: &Path, sas: &Url, block_size: usize) -> Result<()> {
+    let block_size = cmp::min(block_size * ONE_MB, MAX_BLOCK_SIZE);
 
-    let mut core = Core::new()?;
-    let mut file = File::open(filename)?;
-    let size = usize::try_from(file.metadata()?.len())?;
+    let sas: SasToken = sas.try_into()?;
+    let http_client = new_http_client();
+    let storage_account_client =
+        StorageAccountClient::new_sas_token(http_client, &sas.account, &sas.token)?;
+    let storage_client = storage_account_client.as_storage_client();
+    let container_client = storage_client.as_container_client(sas.container);
+    let blob_client = container_client.as_blob_client(sas.path);
+
+    let mut file = File::open(filename)
+        .await
+        .context("unable to open file for upload")?;
+
+    let size: usize = file
+        .metadata()
+        .await?
+        .len()
+        .try_into()
+        .context("unable to convert file size")?;
+
+    let mut block_list = BlockList::default();
     let mut sent = 0;
-    let mut blocks = BlockList { blocks: Vec::new() };
-    let mut data = vec![0; block_size];
-    while sent < size {
+    for i in 0..usize::MAX {
+        if sent >= size {
+            break;
+        }
+
         let send_size = cmp::min(block_size, size - sent);
-        let block_id = to_id(sent as u64)?;
+        let mut data = BytesMut::new();
         data.resize(send_size, 0);
-        file.read_exact(&mut data)?;
+        file.read_exact(&mut data)
+            .await
+            .context("unable to read from file")?;
+        let block_id = Bytes::from(format!("{:032x}", i));
+        let hash = md5::compute(data.clone()).into();
+        block_list
+            .blocks
+            .push(BlobBlockType::Uncommitted(BlockId::new(block_id.clone())));
 
-        retry(
-            Exponential::from_millis(BACKOFF)
-                .map(jitter)
-                .take(BACKOFF_COUNT),
-            || {
-                let response = core.run(
-                    client
-                        .put_block()
-                        .with_container_name(&container)
-                        .with_blob_name(&path)
-                        .with_body(&data)
-                        .with_block_id(&block_id)
-                        .finalize(),
-                );
+        let data = data.freeze();
 
-                match response {
-                    Ok(x) => OperationResult::Ok(x),
-                    Err(x) => match x {
-                        AzureError::HyperError(_) => OperationResult::Retry(x),
-                        _ => OperationResult::Err(x),
-                    },
+        retry(ExponentialBackoff::default(), || async {
+            let data_for_req = (&data.clone()).to_owned();
+            let block_id_for_req = (&block_id.clone()).to_owned();
+
+            let result = blob_client
+                .put_block(block_id_for_req, data_for_req)
+                .hash(&hash)
+                .execute()
+                .await;
+            match result {
+                Ok(x) => Ok(x),
+                Err(e) => {
+                    eprintln!("put block failed: {:?}", e);
+                    Err(e.into())
+                    // Err(e)?
                 }
-            },
-        )?;
+            }
+        })
+        .await
+        .map_err(|e| anyhow!("block upload failed after retry: {:?}", e))?;
 
-        blocks.blocks.push(BlobBlockType::Uncommitted(block_id));
         sent += send_size;
     }
 
-    retry(
-        Exponential::from_millis(BACKOFF)
-            .map(jitter)
-            .take(BACKOFF_COUNT),
-        || {
-            let response = core.run(
-                client
-                    .put_block_list()
-                    .with_container_name(&container)
-                    .with_blob_name(&path)
-                    .with_block_list(&blocks)
-                    .finalize(),
-            );
-
-            match response {
-                Ok(x) => OperationResult::Ok(x),
-                Err(x) => match x {
-                    AzureError::HyperError(_) => OperationResult::Retry(x),
-                    _ => OperationResult::Err(x),
-                },
-            }
-        },
-    )?;
+    retry(ExponentialBackoff::default(), || async {
+        let result = blob_client.put_block_list(&block_list).execute().await?;
+        Ok(result)
+    })
+    .await
+    .map_err(|e| anyhow!("block upload failed: {:?}", e))?;
 
     Ok(())
 }
