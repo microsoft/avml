@@ -3,10 +3,11 @@
 
 use anyhow::{bail, Context, Result};
 use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
+use snap::write::FrameEncoder;
 use std::{
     convert::TryFrom,
-    fs::OpenOptions,
-    io::{prelude::*, SeekFrom},
+    fs::{File, OpenOptions},
+    io::{prelude::*, Seek, SeekFrom},
     ops::Range,
     os::unix::fs::OpenOptionsExt,
     path::Path,
@@ -23,7 +24,7 @@ pub struct Header {
 }
 
 impl Header {
-    pub fn read(mut src: &std::fs::File) -> Result<Self> {
+    pub fn read(mut src: &File) -> Result<Self> {
         let magic = src
             .read_u32::<LittleEndian>()
             .context("unable to read magic")?;
@@ -97,7 +98,7 @@ where
 fn copy_block_impl<R, W>(header: &Header, src: &mut R, mut dst: &mut W) -> Result<()>
 where
     R: Read,
-    W: Write + std::io::Seek,
+    W: Write + Seek,
 {
     header.write(dst)?;
     let size = usize::try_from(header.range.end - header.range.start)
@@ -109,7 +110,7 @@ where
             .seek(SeekFrom::Current(0))
             .context("unable to seek to location")?;
         {
-            let mut snap_fh = snap::Writer::new(&mut dst);
+            let mut snap_fh = FrameEncoder::new(&mut dst);
             copy(size, src, &mut snap_fh).context("copy failed")?;
         }
         let end = dst.seek(SeekFrom::Current(0)).context("seek failed")?;
@@ -124,7 +125,7 @@ where
 pub fn copy_block<R, W>(mut header: Header, src: &mut R, dst: &mut W) -> Result<()>
 where
     R: Read,
-    W: Write + std::io::Seek,
+    W: Write + Seek,
 {
     if header.version == 2 {
         let max_size =
@@ -156,8 +157,8 @@ where
 
 pub struct Image {
     pub version: u32,
-    pub src: std::fs::File,
-    pub dst: std::fs::File,
+    pub src: File,
+    pub dst: File,
 }
 
 impl Image {

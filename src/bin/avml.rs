@@ -5,13 +5,16 @@ use anyhow::{anyhow, bail, Context, Result};
 use argh::FromArgs;
 #[cfg(feature = "blobstore")]
 use avml::ONE_MB;
-#[cfg(any(feature = "blobstore", feature = "put"))]
-use std::fs::remove_file;
 use std::{
     fs::metadata,
     ops::Range,
     path::{Path, PathBuf},
+    str::FromStr,
 };
+#[cfg(any(feature = "blobstore", feature = "put"))]
+use tokio::{fs::remove_file, runtime::Runtime};
+#[cfg(any(feature = "blobstore", feature = "put"))]
+use url::Url;
 
 #[derive(FromArgs)]
 /// A portable volatile memory acquisition tool for Linux
@@ -27,7 +30,7 @@ struct Config {
     /// upload via HTTP PUT upon acquisition
     #[cfg(feature = "put")]
     #[argh(option)]
-    url: Option<reqwest::Url>,
+    url: Option<Url>,
 
     /// delete upon successful upload
     #[cfg(any(feature = "blobstore", feature = "put"))]
@@ -37,7 +40,7 @@ struct Config {
     /// upload via Azure Blob Store upon acquisition
     #[cfg(feature = "blobstore")]
     #[argh(option)]
-    sas_url: Option<url::Url>,
+    sas_url: Option<Url>,
 
     /// specify maximum block size in MiB
     #[cfg(feature = "blobstore")]
@@ -55,7 +58,7 @@ enum Source {
     ProcKcore,
 }
 
-impl ::std::str::FromStr for Source {
+impl FromStr for Source {
     type Err = anyhow::Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let x = match s {
@@ -68,7 +71,7 @@ impl ::std::str::FromStr for Source {
     }
 }
 
-fn kcore(ranges: &[std::ops::Range<u64>], filename: &Path, version: u32) -> Result<()> {
+fn kcore(ranges: &[Range<u64>], filename: &Path, version: u32) -> Result<()> {
     if metadata("/proc/kcore")?.len() < 0x2000 {
         bail!("locked down kcore");
     }
@@ -102,7 +105,7 @@ fn kcore(ranges: &[std::ops::Range<u64>], filename: &Path, version: u32) -> Resu
     Ok(())
 }
 
-fn phys(ranges: &[std::ops::Range<u64>], filename: &Path, mem: &Path, version: u32) -> Result<()> {
+fn phys(ranges: &[Range<u64>], filename: &Path, mem: &Path, version: u32) -> Result<()> {
     let mut image = avml::image::Image::new(version, mem, filename).with_context(|| {
         format!(
             "unable to create image. source:{} destination:{}",
@@ -164,20 +167,16 @@ fn get_mem(src: Option<&Source>, dst: &Path, version: u32) -> Result<()> {
     bail!("unable to read physical memory")
 }
 
-fn main() -> Result<()> {
-    let config: Config = argh::from_env();
-
-    let version = if config.compress { 2 } else { 1 };
-    get_mem(config.source.as_ref(), &config.filename, version)
-        .context("unable to acquire memory")?;
-
-    #[cfg(any(feature = "blobstore", feature = "put"))]
+#[cfg(any(feature = "blobstore", feature = "put"))]
+async fn upload(config: &Config) -> Result<()> {
     let mut delete = false;
 
     #[cfg(feature = "put")]
     {
-        if let Some(url) = config.url {
-            avml::upload::put(&config.filename, url).context("unable to upload via PUT")?;
+        if let Some(url) = &config.url {
+            avml::upload::put(&config.filename, url)
+                .await
+                .context("unable to upload via PUT")?;
             delete = true;
         }
     }
@@ -186,18 +185,34 @@ fn main() -> Result<()> {
     {
         let sas_block_size = config.sas_block_size * ONE_MB;
 
-        if let Some(sas_url) = config.sas_url {
-            avml::blobstore::upload_sas(&config.filename, &sas_url, sas_block_size)
+        if let Some(sas_url) = &config.sas_url {
+            avml::blobstore::upload_sas(&config.filename, sas_url, sas_block_size)
+                .await
                 .context("upload via sas URL failed")?;
             delete = true;
         }
     }
 
+    if delete && config.delete {
+        remove_file(&config.filename)
+            .await
+            .context("unable to remove file after PUT")?;
+    }
+
+    Ok(())
+}
+
+fn main() -> Result<()> {
+    let config: Config = argh::from_env();
+
+    let version = if config.compress { 2 } else { 1 };
+    get_mem(config.source.as_ref(), &config.filename, version)
+        .context("unable to acquire memory")?;
+
     #[cfg(any(feature = "blobstore", feature = "put"))]
     {
-        if delete && config.delete {
-            remove_file(&config.filename).context("unable to remove file after PUT")?;
-        }
+        let rt = Runtime::new()?;
+        rt.block_on(upload(&config))?;
     }
 
     Ok(())

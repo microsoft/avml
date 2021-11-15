@@ -1,11 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Error, Result};
 use argh::FromArgs;
 use avml::ONE_MB;
-use snap::Reader;
-use std::{convert::TryFrom, fs::metadata, io::prelude::*, io::SeekFrom, path::PathBuf};
+use snap::read::FrameDecoder;
+use std::{
+    convert::TryFrom, fs::metadata, io::prelude::*, io::SeekFrom, path::PathBuf, str::FromStr,
+};
 
 fn convert(src: PathBuf, dst: PathBuf, compress: bool) -> Result<()> {
     let src_len = metadata(&src)?.len();
@@ -26,7 +28,7 @@ fn convert(src: PathBuf, dst: PathBuf, compress: bool) -> Result<()> {
                 avml::image::copy_block(new_header, &mut image.src, &mut image.dst)?;
             }
             2 => {
-                let mut reader = Reader::new(&image.src);
+                let mut reader = FrameDecoder::new(&image.src);
                 avml::image::copy_block(new_header, &mut reader, &mut image.dst)?;
                 image.src.seek(SeekFrom::Current(8))?;
             }
@@ -68,7 +70,7 @@ fn convert_to_raw(src: PathBuf, dst: PathBuf) -> Result<()> {
                 avml::image::copy(size, &mut image.src, &mut image.dst)?;
             }
             2 => {
-                let mut reader = Reader::new(&image.src);
+                let mut reader = FrameDecoder::new(&image.src);
                 avml::image::copy(size, &mut reader, &mut image.dst)?;
                 image.src.seek(SeekFrom::Current(8))?;
             }
@@ -105,8 +107,8 @@ enum Format {
     LimeCompressed,
 }
 
-impl ::std::str::FromStr for Format {
-    type Err = anyhow::Error;
+impl FromStr for Format {
+    type Err = Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let x = match s {
             "raw" => Self::Raw,
