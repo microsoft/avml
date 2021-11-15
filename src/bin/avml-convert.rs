@@ -84,8 +84,8 @@ fn convert_to_raw(src: PathBuf, dst: PathBuf) -> Result<()> {
 #[derive(FromArgs)]
 /// AVML compress/decompress tool
 struct Config {
-    /// specify output format [possible values: raw, lime, lime_compressed.  Default: lime]
-    #[argh(option, default = "Format::Lime")]
+    /// specify output format [possible values: raw, lime, lime_compressed.  Default: lime_compressed]
+    #[argh(option, default = "Format::LimeCompressed")]
     source_format: Format,
 
     /// specify output format [possible values: raw, lime, lime_compressed.  Default: lime]

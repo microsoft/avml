@@ -42,4 +42,5 @@ quiet az group create -l ${REGION} -n ${GROUP}
 IP=$( az vm create -g ${GROUP} --size ${SIZE} -n ${VM} --image ${SKU} --query publicIpAddress -o tsv )
 quiet az vm extension set -g ${GROUP} --vm-name ${VM} --publisher Microsoft.Azure.Extensions -n customScript --settings ${CONFIG}
 ssh-keygen -R ${IP} 2>/dev/null > /dev/null
+quiet ssh -oStrictHostKeyChecking=no ${IP} sudo chmod a+r /tmp/image.lime 
 quiet scp -oStrictHostKeyChecking=no ${IP}:/tmp/image.lime ./${SKU}.lime

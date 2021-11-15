@@ -61,7 +61,7 @@ SAS_URL=$(az storage blob generate-sas --account-name ACCOUNT --container CONTAI
 
 On the target host, execute avml with the generated SAS token.
 ```
-avml --sas_url ${SAS_URL} --delete output.lime
+avml --sas-url ${SAS_URL} --delete output.lime
 ```
 
 ## Capturing a memory image of an Azure VM using VM Extensions
@@ -72,7 +72,7 @@ On a secure host with `az cli` credentials, do the following:
 2. Create `config.json` containing the following information:
 ```
 {
-    "commandToExecute": "./avml --compress --sas_url <GENERATED_SAS_URL> --delete",
+    "commandToExecute": "./avml --compress --sas-url <GENERATED_SAS_URL> --delete",
     "fileUris": ["https://FULL.URL.TO.AVML.example.com/avml"]
 }
 ```
@@ -96,28 +96,26 @@ avml-convert ./compressed.lime ./uncompressed.lime
 
 ## To compress an uncompressed LiME image
 ```
-avml-convert --format lime_compressed ./uncompressed.lime ./compressed.lime
+avml-convert --source_format lime --format lime_compressed ./uncompressed.lime ./compressed.lime
 ```
 
 # Usage
 
 ```
-avml [FLAGS] [OPTIONS] <filename>
+Usage: avml <filename> [--compress] [--source <source>] [--url <url>] [--delete] [--sas-url <sas-url>] [--sas-block-size <sas-block-size>]
 
-FLAGS:
-        --compress    compress pages via snappy
-        --delete      delete upon successful upload
-    -h, --help        Prints help information
-    -V, --version     Prints version information
+A portable volatile memory acquisition tool for Linux
 
-OPTIONS:
-        --sas_block_size <sas_block_size>    specify maximum block size in MiB
-        --sas_url <sas_url>                  Upload via Azure Blob Store upon acquisition
-        --source <source>                    specify input source [possible values: /proc/kcore, /dev/crash, /dev/mem]
-        --url <url>                          Upload via HTTP PUT upon acquisition.
+Options:
+  --compress        compress via snappy
+  --source          specify input source [possible values: /proc/kcore,
+                    /dev/crash, /dev/mem]
+  --url             upload via HTTP PUT upon acquisition
+  --delete          delete upon successful upload
+  --sas-url         upload via Azure Blob Store upon acquisition
+  --sas-block-size  specify maximum block size in MiB
+  --help            display usage information
 
-ARGS:
-    <filename>    name of the file to write to on local system
 ```
 
 # Building on Ubuntu
