@@ -38,3 +38,7 @@ azure_core= { git = "https://github.com/azure/azure-sdk-for-rust", default-featu
 opt-level="z"
 lto=true
 panic="abort"
+
+[[bin]]
+name = "avml-upload"
+required-features = ["put", "blobstore"]
