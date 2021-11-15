@@ -1,61 +1,75 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#[macro_use]
-extern crate clap;
-extern crate avml;
-
-#[cfg(feature = "blobstore")]
+use anyhow::{Context, Result};
+use argh::FromArgs;
 use avml::ONE_MB;
+use std::path::PathBuf;
+use tokio::runtime::Runtime;
+use url::Url;
 
-use clap::{App, Arg};
-use std::error::Error;
+#[derive(FromArgs)]
+#[argh(subcommand, name = "put")]
+/// upload via HTTP Put
+struct Put {
+    /// name of the file to write to on local system
+    #[argh(positional)]
+    filename: PathBuf,
 
-fn main() -> Result<(), Box<dyn Error>> {
-    let args = App::new(crate_name!())
-        .author(crate_authors!())
-        .about(crate_description!())
-        .version(crate_version!())
-        .args(&[
-            Arg::with_name("filename")
-                .help("name of the file to upload from the local system")
-                .required(true),
-            Arg::with_name("sas_url")
-                .long("sas_url")
-                .takes_value(true)
-                .help("Upload via Azure Blob Store"),
-            Arg::with_name("sas_block_size")
-                .long("sas_block_size")
-                .takes_value(true)
-                .help("specify maximum block size in MiB"),
-            Arg::with_name("url")
-                .long("url")
-                .takes_value(true)
-                .help("Upload via HTTP PUT"),
-        ])
-        .get_matches();
+    /// upload via HTTP PUT
+    #[argh(positional)]
+    url: Url,
+}
 
-    let dst = value_t!(args.value_of("filename"), String)?;
+#[derive(FromArgs)]
+#[argh(subcommand, name = "upload-blob")]
+/// upload via HTTP Put
+struct BlobUpload {
+    /// name of the file to write to on local system
+    #[argh(positional)]
+    filename: PathBuf,
 
-    let url = args.value_of("url");
-    if let Some(url) = url {
-        avml::upload::put(&dst, url)?;
+    /// upload via HTTP PUT
+    #[argh(positional)]
+    url: Url,
+
+    /// specify maximum block size in MiB
+    #[argh(option, default = "100")]
+    sas_block_size: usize,
+}
+
+#[derive(FromArgs)]
+#[argh(subcommand)]
+enum SubCommands {
+    Put(Put),
+    BlobUpload(BlobUpload),
+}
+
+#[derive(FromArgs)]
+/// A portable volatile memory acquisition tool for Linux
+struct Cmd {
+    #[argh(subcommand)]
+    subcommand: SubCommands,
+}
+
+async fn run(cmd: Cmd) -> Result<()> {
+    match cmd.subcommand {
+        SubCommands::Put(config) => avml::upload::put(&config.filename, &config.url)
+            .await
+            .context("unable to upload via PUT"),
+        SubCommands::BlobUpload(config) => {
+            let sas_block_size = config.sas_block_size * ONE_MB;
+            avml::blobstore::upload_sas(&config.filename, &config.url, sas_block_size)
+                .await
+                .context("upload via sas URL failed")
+        }
     }
+}
 
-    let sas_url = args.value_of("sas_url");
-    let sas_block_size = if args.is_present("sas_block_size") {
-        value_t!(args.value_of("sas_block_size"), usize)?
-    } else {
-        100
-    } * ONE_MB;
+fn main() -> Result<()> {
+    let cmd: Cmd = argh::from_env();
 
-    if let Some(sas_url) = sas_url {
-        avml::blobstore::upload_sas(&dst, sas_url, sas_block_size)?;
-    }
-
-    if url.is_none() && sas_url.is_none() {
-        return Err(From::from("file was not uploaded"));
-    }
+    Runtime::new()?.block_on(run(cmd))?;
 
     Ok(())
 }
