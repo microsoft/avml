@@ -38,8 +38,3 @@ azure_core= { git = "https://github.com/azure/azure-sdk-for-rust", default-featu
 opt-level="z"
 lto=true
 panic="abort"
-
-# until azure-sdk-for-rust #PR 509 is committed
-# [patch.'https://github.com/azure/azure-sdk-for-rust']
-# azure_core = { git = "https://github.com/bmc-msft/azure-sdk-for-rust", branch = "pass-enable-reqwest-from-storage-to-core" }
-# azure_storage= { git = "https://github.com/bmc-msft/azure-sdk-for-rust", branch = "pass-enable-reqwest-from-storage-to-core" }
