@@ -5,9 +5,9 @@ use anyhow::{bail, Result};
 use argh::FromArgs;
 use avml::ONE_MB;
 use snap::Reader;
-use std::{convert::TryFrom, fs::metadata, io::prelude::*, io::SeekFrom};
+use std::{convert::TryFrom, fs::metadata, io::prelude::*, io::SeekFrom, path::PathBuf};
 
-fn convert(src: String, dst: String, compress: bool) -> Result<()> {
+fn convert(src: PathBuf, dst: PathBuf, compress: bool) -> Result<()> {
     let src_len = metadata(&src)?.len();
     let mut image = avml::image::Image::new(1, &src, &dst)?;
 
@@ -37,7 +37,7 @@ fn convert(src: String, dst: String, compress: bool) -> Result<()> {
     Ok(())
 }
 
-fn convert_to_raw(src: String, dst: String) -> Result<()> {
+fn convert_to_raw(src: PathBuf, dst: PathBuf) -> Result<()> {
     let src_len = metadata(&src)?.len();
     let mut image = avml::image::Image::new(1, &src, &dst)?;
 
@@ -84,15 +84,19 @@ fn convert_to_raw(src: String, dst: String) -> Result<()> {
 struct Config {
     /// specify output format [possible values: raw, lime, lime_compressed.  Default: lime]
     #[argh(option, default = "Format::Lime")]
+    source_format: Format,
+
+    /// specify output format [possible values: raw, lime, lime_compressed.  Default: lime]
+    #[argh(option, default = "Format::Lime")]
     format: Format,
 
     /// name of the source file to read to on local system
     #[argh(positional)]
-    source: String,
+    src: PathBuf,
 
     /// name of the destination file to write to on local system
     #[argh(positional)]
-    destination: String,
+    dst: PathBuf,
 }
 
 enum Format {
@@ -117,11 +121,17 @@ impl ::std::str::FromStr for Format {
 fn main() -> Result<()> {
     let config: Config = argh::from_env();
 
-    match config.format {
-        Format::Raw => convert_to_raw(config.source, config.destination)?,
-        Format::Lime => convert(config.source, config.destination, false)?,
-        Format::LimeCompressed => convert(config.source, config.destination, true)?,
+    match (config.source_format, config.format) {
+        (Format::Lime | Format::LimeCompressed, Format::Raw) => {
+            convert_to_raw(config.src, config.dst)
+        }
+        (Format::Lime, Format::LimeCompressed) => convert(config.src, config.dst, true),
+        (Format::LimeCompressed, Format::Lime) => convert(config.src, config.dst, false),
+        (Format::Lime, Format::Lime)
+        | (Format::LimeCompressed, Format::LimeCompressed)
+        | (Format::Raw, Format::Raw) => bail!("no conversion required"),
+        (Format::Raw, Format::Lime | Format::LimeCompressed) => {
+            bail!("converting from raw not supported")
+        }
     }
-
-    Ok(())
 }

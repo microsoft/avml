@@ -9,6 +9,7 @@ use std::{
     io::{prelude::*, SeekFrom},
     ops::Range,
     os::unix::fs::OpenOptionsExt,
+    path::Path,
 };
 
 const PAGE_SIZE: usize = 0x1000;
@@ -160,18 +161,18 @@ pub struct Image {
 }
 
 impl Image {
-    pub fn new(version: u32, src_filename: &str, dst_filename: &str) -> Result<Self> {
+    pub fn new(version: u32, src_filename: &Path, dst_filename: &Path) -> Result<Self> {
         let src = OpenOptions::new()
             .read(true)
             .open(src_filename)
-            .with_context(|| format!("unable to open source file: {}", src_filename))?;
+            .with_context(|| format!("unable to open source file: {}", src_filename.display()))?;
         let dst = OpenOptions::new()
             .mode(0o600)
             .write(true)
             .create(true)
             .truncate(true)
             .open(dst_filename)
-            .with_context(|| format!("unable to destination image: {}", dst_filename))?;
+            .with_context(|| format!("unable to destination image: {}", dst_filename.display()))?;
         Ok(Self { version, src, dst })
     }
 

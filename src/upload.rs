@@ -3,13 +3,13 @@
 
 use anyhow::{bail, Context, Result};
 use reqwest;
-use std::fs::File;
+use std::{fs::File, path::Path};
 
 /// Upload a file via HTTP PUT
 #[cfg(feature = "put")]
-pub fn put(filename: &str, url: reqwest::Url) -> Result<()> {
+pub fn put(filename: &Path, url: reqwest::Url) -> Result<()> {
     let file = File::open(&filename)
-        .with_context(|| format!("unable to open image file: {}", filename))?;
+        .with_context(|| format!("unable to open image file: {}", filename.display()))?;
 
     let client = reqwest::Client::new();
     let res = client

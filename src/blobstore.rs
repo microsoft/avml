@@ -8,7 +8,7 @@ use azure_sdk_core::{errors::AzureError, prelude::*};
 use azure_sdk_storage_core::prelude::*;
 use byteorder::{LittleEndian, WriteBytesExt};
 use retry::{delay::jitter, delay::Exponential, retry, OperationResult};
-use std::{cmp, convert::TryFrom, fs::File, io::prelude::*};
+use std::{cmp, convert::TryFrom, fs::File, io::prelude::*, path::Path};
 use tokio_core::reactor::Core;
 use url::Url;
 
@@ -43,7 +43,7 @@ fn parse(sas: &Url) -> Result<(String, String, String)> {
 }
 
 /// Upload a file to Azure Blob Store using a fully qualified SAS token
-pub fn upload_sas(filename: &str, sas: &Url, block_size: usize) -> Result<()> {
+pub fn upload_sas(filename: &Path, sas: &Url, block_size: usize) -> Result<()> {
     let block_size = cmp::min(block_size, MAX_BLOCK_SIZE);
     let (account, container, path) = parse(sas).context("unable to parse SAS url")?;
     let client = Client::azure_sas(&account, sas.as_str())
