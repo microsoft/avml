@@ -8,7 +8,7 @@ set -e
 
 LOG=/tmp/.log_$$.txt
 
-IMAGES_TXT=${1:-test/images.txt}
+IMAGES_TXT=${1:-eng/images.txt}
 FILE=${2:-target/x86_64-unknown-linux-musl/release/avml}
 GROUP=vm-capture-test-`date '+%Y-%m-%d-%H-%M-%S'`-$$
 REGION=eastus
@@ -42,6 +42,6 @@ quiet az storage account create --location ${REGION} --resource-group ${GROUP} -
 quiet az storage container create --account-name ${STORAGE} --name ${CONTAINER}
 quiet az storage container set-permission --account-name ${STORAGE} -n ${CONTAINER} --public-access blob
 quiet az storage blob upload --account-name ${STORAGE} --container ${CONTAINER} --name ${DST_PATH} --file ${FILE}
-xargs -P 20 -a ${IMAGES_TXT} -I test-image-name test/test-azure-image.sh ${URL} test-image-name
+xargs -P 20 -a ${IMAGES_TXT} -I test-image-name eng/test-azure-image.sh ${URL} test-image-name
 
-test/test-conversion.sh
+eng/test-conversion.sh
