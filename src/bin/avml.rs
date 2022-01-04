@@ -75,6 +75,14 @@ fn can_open(src: &Path) -> bool {
     OpenOptions::new().read(true).open(src).is_ok()
 }
 
+// The file /proc/kcore is a psuedo-file in ELF core format that is 4KB+physical
+// memory in size.
+//
+// If LOCKDOWN_KCORE is set in the kernel, then /proc/kcore may exist but is
+// either inaccessible or doesn't allow access to all of the kernel memory.
+//
+// /dev/mem and /dev/crash, if available, are devices, rather than virtual
+// files.  As such, we don't check those for size.
 fn is_kcore_ok() -> bool {
     let path = Path::new("/proc/kcore");
     metadata(path).map(|x| x.len() > 0x2000).unwrap_or(false) && can_open(path)
@@ -167,6 +175,9 @@ fn get_mem(src: Option<&Source>, dst: &Path, version: u32) -> Result<()> {
     if let Some(src) = src {
         read_src(&ranges, src, dst, version)
     } else if dst == Path::new("/dev/stdout") {
+        // If we're writing to stdout, we can't start over if reading from a
+        // source fails.  As such, we need to do more work to pick a source
+        // rather than just trying all available options.
         if is_kcore_ok() {
             read_src(&ranges, &Source::ProcKcore, dst, version)
                 .context("reading /proc/kcore failed")
