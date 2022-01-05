@@ -14,7 +14,7 @@ edition = "2021"
 [features]
 default = ["put", "blobstore"]
 put = ["reqwest", "url", "tokio"]
-blobstore = ["url", "azure_core", "azure_storage", "tokio", "tokio-util", "backoff"]
+blobstore = ["url", "azure_core", "azure_storage", "azure_storage_blobs", "tokio", "tokio-util", "backoff"]
 
 [dependencies]
 bytes = "1.1"
@@ -29,9 +29,9 @@ tokio = { version = "1.0", default-features = false, optional = true, features =
 reqwest = { version = "0.11", default-features = false, features = ["rustls-tls"], optional = true}
 anyhow = "1.0"
 md5 = "0.7"
-backoff = { version = "0.3", features = ["tokio"], optional = true}
-
-azure_storage = { git = "https://github.com/azure/azure-sdk-for-rust", default-features = false, features = ["enable_reqwest_rustls", "account", "blob"], optional = true }
+backoff = { version = "0.4", features = ["tokio"], optional = true}
+azure_storage = { git = "https://github.com/azure/azure-sdk-for-rust", default-features = false, features = ["enable_reqwest_rustls", "account"], optional = true }
+azure_storage_blobs = { git = "https://github.com/azure/azure-sdk-for-rust", default-features = false, features = ["enable_reqwest_rustls"], optional = true }
 azure_core= { git = "https://github.com/azure/azure-sdk-for-rust", default-features= false, features = ["enable_reqwest_rustls"], optional = true }
 
 [profile.release]
