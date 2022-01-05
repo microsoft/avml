@@ -6,7 +6,7 @@ use argh::FromArgs;
 #[cfg(feature = "blobstore")]
 use avml::ONE_MB;
 use std::{
-    fs::metadata,
+    fs::{metadata, OpenOptions},
     ops::Range,
     path::{Path, PathBuf},
     str::FromStr,
@@ -71,8 +71,25 @@ impl FromStr for Source {
     }
 }
 
+fn can_open(src: &Path) -> bool {
+    OpenOptions::new().read(true).open(src).is_ok()
+}
+
+// The file /proc/kcore is a psuedo-file in ELF core format that is 4KB+physical
+// memory in size.
+//
+// If LOCKDOWN_KCORE is set in the kernel, then /proc/kcore may exist but is
+// either inaccessible or doesn't allow access to all of the kernel memory.
+//
+// /dev/mem and /dev/crash, if available, are devices, rather than virtual
+// files.  As such, we don't check those for size.
+fn is_kcore_ok() -> bool {
+    let path = Path::new("/proc/kcore");
+    metadata(path).map(|x| x.len() > 0x2000).unwrap_or(false) && can_open(path)
+}
+
 fn kcore(ranges: &[Range<u64>], filename: &Path, version: u32) -> Result<()> {
-    if metadata("/proc/kcore")?.len() < 0x2000 {
+    if !is_kcore_ok() {
         bail!("locked down kcore");
     }
 
@@ -137,34 +154,50 @@ fn phys(ranges: &[Range<u64>], filename: &Path, mem: &Path, version: u32) -> Res
 macro_rules! try_method {
     ($func:expr) => {{
         match $func {
-            Ok(_) => return Ok(()),
+            Ok(x) => return Ok(x),
             Err(err) => err,
         }
     }};
+}
+
+fn read_src(ranges: &[Range<u64>], src: &Source, dst: &Path, version: u32) -> Result<()> {
+    match src {
+        Source::ProcKcore => kcore(ranges, dst, version),
+        Source::DevCrash => phys(ranges, dst, Path::new("/dev/crash"), version),
+        Source::DevMem => phys(ranges, dst, Path::new("/dev/mem"), version),
+    }
 }
 
 fn get_mem(src: Option<&Source>, dst: &Path, version: u32) -> Result<()> {
     let ranges =
         avml::iomem::parse(Path::new("/proc/iomem")).context("parsing /proc/iomem failed")?;
 
-    if let Some(source) = src {
-        match source {
-            Source::ProcKcore => kcore(&ranges, dst, version)?,
-            Source::DevCrash => phys(&ranges, dst, Path::new("/dev/crash"), version)?,
-            Source::DevMem => phys(&ranges, dst, Path::new("/dev/mem"), version)?,
-        };
+    if let Some(src) = src {
+        read_src(&ranges, src, dst, version)
+    } else if dst == Path::new("/dev/stdout") {
+        // If we're writing to stdout, we can't start over if reading from a
+        // source fails.  As such, we need to do more work to pick a source
+        // rather than just trying all available options.
+        if is_kcore_ok() {
+            read_src(&ranges, &Source::ProcKcore, dst, version)
+                .context("reading /proc/kcore failed")
+        } else if can_open(Path::new("/dev/crash")) {
+            read_src(&ranges, &Source::DevCrash, dst, version).context("reading /dev/crash failed")
+        } else if can_open(Path::new("/dev/mem")) {
+            read_src(&ranges, &Source::DevMem, dst, version).context("reading /dev/mem failed")
+        } else {
+            bail!("unable to read memory");
+        }
+    } else {
+        let crash_err = try_method!(read_src(&ranges, &Source::DevCrash, dst, version));
+        let kcore_err = try_method!(read_src(&ranges, &Source::ProcKcore, dst, version));
+        let devmem_err = try_method!(read_src(&ranges, &Source::DevMem, dst, version));
+
+        eprintln!("/dev/crash failed: {:?}", crash_err);
+        eprintln!("/proc/kcore failed: {:?}", kcore_err);
+        eprintln!("/dev/mem failed: {:?}", devmem_err);
+        bail!("unable to read memory");
     }
-
-    let crash_err = try_method!(phys(&ranges, dst, Path::new("/dev/crash"), version));
-    let kcore_err = try_method!(kcore(&ranges, dst, version));
-    let devmem_err = try_method!(phys(&ranges, dst, Path::new("/dev/mem"), version));
-
-    eprintln!("unable to read memory");
-    eprintln!("/dev/crash failed: {:?}", crash_err);
-    eprintln!("/proc/kcore failed: {:?}", kcore_err);
-    eprintln!("/dev/mem failed: {:?}", devmem_err);
-
-    bail!("unable to read physical memory")
 }
 
 #[cfg(any(feature = "blobstore", feature = "put"))]
