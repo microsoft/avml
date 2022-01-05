@@ -4,8 +4,8 @@
 use crate::ONE_MB;
 use anyhow::{anyhow, bail, Context, Result};
 use azure_core::new_http_client;
-use azure_storage_blobs::prelude::*;
 use azure_storage::core::prelude::*;
+use azure_storage_blobs::prelude::*;
 use backoff::{future::retry, ExponentialBackoff};
 use bytes::{Bytes, BytesMut};
 use std::{cmp, convert::TryFrom, path::Path};
