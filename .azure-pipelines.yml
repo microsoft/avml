@@ -17,6 +17,7 @@ pool:
 
 steps:
 - script: |
+    set -ex
     rustup component add rustfmt
     cargo fmt -- --check
     DEBIAN_FRONTEND=noninteractive sudo apt-get install musl-dev musl-tools musl
@@ -30,6 +31,7 @@ steps:
   displayName: build
 
 - script: |
+    set -ex
     cargo test --release --target x86_64-unknown-linux-musl
     sudo target/x86_64-unknown-linux-musl/release/avml --compress output.lime
   displayName: test
