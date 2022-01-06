@@ -85,7 +85,7 @@ dependencies = [
 [[package]]
 name = "azure_core"
 version = "0.1.0"
-source = "git+https://github.com/azure/azure-sdk-for-rust#64a332c6e46e66817489ab8e38edf43a3dbda39e"
+source = "git+https://github.com/azure/azure-sdk-for-rust#453b75af67031b7927685be52c0536f048312790"
 dependencies = [
  "async-trait",
  "base64",
@@ -111,7 +111,7 @@ dependencies = [
 [[package]]
 name = "azure_storage"
 version = "0.1.0"
-source = "git+https://github.com/azure/azure-sdk-for-rust#64a332c6e46e66817489ab8e38edf43a3dbda39e"
+source = "git+https://github.com/azure/azure-sdk-for-rust#453b75af67031b7927685be52c0536f048312790"
 dependencies = [
  "RustyXML",
  "async-trait",
@@ -136,7 +136,7 @@ dependencies = [
 [[package]]
 name = "azure_storage_blobs"
 version = "0.1.0"
-source = "git+https://github.com/azure/azure-sdk-for-rust#64a332c6e46e66817489ab8e38edf43a3dbda39e"
+source = "git+https://github.com/azure/azure-sdk-for-rust#453b75af67031b7927685be52c0536f048312790"
 dependencies = [
  "RustyXML",
  "azure_core",
@@ -187,9 +187,9 @@ dependencies = [
 
 [[package]]
 name = "bumpalo"
-version = "3.8.0"
+version = "3.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f1e260c3a9040a7c19a12468758f4c16f31a81a1fe087482be9570ec864bb6c"
+checksum = "a4a45a46ab1f2412e53d3a0ade76ffad2025804294569aae387231a0cd6e0899"
 
 [[package]]
 name = "byteorder"
@@ -911,9 +911,9 @@ dependencies = [
 
 [[package]]
 name = "serde-xml-rs"
-version = "0.4.1"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0bf1ba0696ccf0872866277143ff1fd14d22eec235d2b23702f95e6660f7dfa"
+checksum = "65162e9059be2f6a3421ebbb4fef3e74b7d9e7c60c50a0e292c6239f19f1edfa"
 dependencies = [
  "log",
  "serde",
@@ -1007,9 +1007,9 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 
 [[package]]
 name = "syn"
-version = "1.0.84"
+version = "1.0.85"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ecb2e6da8ee5eb9a61068762a32fa9619cc591ceb055b3687f4cd4051ec2e06b"
+checksum = "a684ac3dcd8913827e18cd09a68384ee66c1de24157e3c556c9ab16d85695fb7"
 dependencies = [
  "proc-macro2",
  "quote",
