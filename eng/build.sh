@@ -16,3 +16,4 @@ cargo build --release --target x86_64-unknown-linux-musl --locked
 strip target/x86_64-unknown-linux-musl/release/avml
 strip target/x86_64-unknown-linux-musl/release/avml-minimal
 strip target/x86_64-unknown-linux-musl/release/avml-convert
+strip target/x86_64-unknown-linux-musl/release/avml-upload
