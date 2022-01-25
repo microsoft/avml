@@ -27,11 +27,11 @@ or kernel a priori.  No on-target compilation or fingerprinting is needed.
 If the memory source is not specified on the commandline, AVML will iterate over the memory sources to find a functional source.
 
 ## Tested Distributions
-* Ubuntu: 12.04, 14.04, 16.04, 18.04, 18.10, 19.04, 19.10
-* Centos: 6.5, 6.6, 6.7, 6.8, 6.9, 6.10, 7.0, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6
-* RHEL: 6.7, 6.8, 6.9, 7.0, 7.2, 7.3, 7.4, 7.5, 8
-* Debian: 8, 9
-* Oracle Linux: 6.8, 6.9, 7.3, 7.4, 7.5, 7.6
+* Ubuntu: 12.04, 14.04, 16.04, 18.04, 18.10, 19.04, 19.10, 20.04, 21.04, 22.04
+* Centos: 6.5, 6.6, 6.7, 6.8, 6.9, 6.10, 7.0, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.9
+* RHEL: 6.7, 6.8, 6.9, 7.0, 7.2, 7.3, 7.4, 7.5, 7.7, 8.5
+* Debian: 8, 9, 10, 11
+* Oracle Linux: 6.8, 6.9, 6.10, 7.3, 7.4, 7.5, 7.6, 7.9, 8.5
 
 # Getting Started
 
@@ -142,7 +142,7 @@ The testing scripts will create, use, and cleanup a number of resource groups, v
 1. Install [az cli](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli)
 2. Login to your Azure subscription using: `az login`
 3. Build avml (see above)
-4. ./test/run.sh
+4. ./eng/run.sh
 
 # Contributing
 
