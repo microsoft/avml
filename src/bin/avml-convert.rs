@@ -6,12 +6,17 @@ use argh::FromArgs;
 use avml::ONE_MB;
 use snap::read::FrameDecoder;
 use std::{
-    convert::TryFrom, fs::metadata, io::prelude::*, io::SeekFrom, path::PathBuf, str::FromStr,
+    convert::TryFrom,
+    fs::metadata,
+    io::prelude::*,
+    io::SeekFrom,
+    path::{Path, PathBuf},
+    str::FromStr,
 };
 
-fn convert(src: PathBuf, dst: PathBuf, compress: bool) -> Result<()> {
-    let src_len = metadata(&src)?.len();
-    let mut image = avml::image::Image::new(1, &src, &dst)?;
+fn convert(src: &Path, dst: &Path, compress: bool) -> Result<()> {
+    let src_len = metadata(src)?.len();
+    let mut image = avml::image::Image::new(1, src, dst)?;
 
     loop {
         let current = image.src.seek(SeekFrom::Current(0))?;
@@ -28,8 +33,8 @@ fn convert(src: PathBuf, dst: PathBuf, compress: bool) -> Result<()> {
                 avml::image::copy_block(new_header, &mut image.src, &mut image.dst)?;
             }
             2 => {
-                let mut reader = FrameDecoder::new(&image.src);
-                avml::image::copy_block(new_header, &mut reader, &mut image.dst)?;
+                let mut decoder = FrameDecoder::new(&image.src);
+                avml::image::copy_block(new_header, &mut decoder, &mut image.dst)?;
                 image.src.seek(SeekFrom::Current(8))?;
             }
             _ => unimplemented!(),
@@ -39,9 +44,9 @@ fn convert(src: PathBuf, dst: PathBuf, compress: bool) -> Result<()> {
     Ok(())
 }
 
-fn convert_to_raw(src: PathBuf, dst: PathBuf) -> Result<()> {
-    let src_len = metadata(&src)?.len();
-    let mut image = avml::image::Image::new(1, &src, &dst)?;
+fn convert_to_raw(src: &Path, dst: &Path) -> Result<()> {
+    let src_len = metadata(src)?.len();
+    let mut image = avml::image::Image::new(1, src, dst)?;
 
     loop {
         let current = image.src.seek(SeekFrom::Current(0))?;
@@ -70,8 +75,8 @@ fn convert_to_raw(src: PathBuf, dst: PathBuf) -> Result<()> {
                 avml::image::copy(size, &mut image.src, &mut image.dst)?;
             }
             2 => {
-                let mut reader = FrameDecoder::new(&image.src);
-                avml::image::copy(size, &mut reader, &mut image.dst)?;
+                let mut decoder = FrameDecoder::new(&image.src);
+                avml::image::copy(size, &mut decoder, &mut image.dst)?;
                 image.src.seek(SeekFrom::Current(8))?;
             }
             _ => unimplemented!(),
@@ -125,10 +130,10 @@ fn main() -> Result<()> {
 
     match (config.source_format, config.format) {
         (Format::Lime | Format::LimeCompressed, Format::Raw) => {
-            convert_to_raw(config.src, config.dst)
+            convert_to_raw(&config.src, &config.dst)
         }
-        (Format::Lime, Format::LimeCompressed) => convert(config.src, config.dst, true),
-        (Format::LimeCompressed, Format::Lime) => convert(config.src, config.dst, false),
+        (Format::Lime, Format::LimeCompressed) => convert(&config.src, &config.dst, true),
+        (Format::LimeCompressed, Format::Lime) => convert(&config.src, &config.dst, false),
         (Format::Lime, Format::Lime)
         | (Format::LimeCompressed, Format::LimeCompressed)
         | (Format::Raw, Format::Raw) => bail!("no conversion required"),
