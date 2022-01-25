@@ -3,7 +3,11 @@
 
 use anyhow::{bail, Error, Result};
 use argh::FromArgs;
-use avml::ONE_MB;
+use avml::{
+    image::{Block, MAX_BLOCK_SIZE},
+    iomem::split_ranges,
+    ONE_MB,
+};
 use snap::read::FrameDecoder;
 use std::{
     convert::TryFrom,
@@ -86,6 +90,24 @@ fn convert_to_raw(src: &Path, dst: &Path) -> Result<()> {
     Ok(())
 }
 
+fn convert_from_raw(src: &Path, dst: &Path, compress: bool) -> Result<()> {
+    let src_len = metadata(&src)?.len();
+    let version = if compress { 2 } else { 1 };
+    let mut image = avml::image::Image::new(version, src, dst)?;
+
+    let ranges = split_ranges(vec![0..src_len], MAX_BLOCK_SIZE)?;
+
+    let blocks = ranges
+        .iter()
+        .map(|x| Block {
+            offset: x.start,
+            range: x.start..x.end,
+        })
+        .collect::<Vec<_>>();
+
+    image.write_blocks(&blocks)
+}
+
 #[derive(FromArgs)]
 /// AVML compress/decompress tool
 struct Config {
@@ -134,11 +156,10 @@ fn main() -> Result<()> {
         }
         (Format::Lime, Format::LimeCompressed) => convert(&config.src, &config.dst, true),
         (Format::LimeCompressed, Format::Lime) => convert(&config.src, &config.dst, false),
+        (Format::Raw, Format::Lime) => convert_from_raw(&config.src, &config.dst, false),
+        (Format::Raw, Format::LimeCompressed) => convert_from_raw(&config.src, &config.dst, true),
         (Format::Lime, Format::Lime)
         | (Format::LimeCompressed, Format::LimeCompressed)
         | (Format::Raw, Format::Raw) => bail!("no conversion required"),
-        (Format::Raw, Format::Lime | Format::LimeCompressed) => {
-            bail!("converting from raw not supported")
-        }
     }
 }
