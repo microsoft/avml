@@ -97,8 +97,8 @@ pub async fn upload_sas(filename: &Path, sas: &Url, block_size: usize) -> Result
         let data = data.freeze();
 
         retry(ExponentialBackoff::default(), || async {
-            let data_for_req = (&data.clone()).to_owned();
-            let block_id_for_req = (&block_id.clone()).to_owned();
+            let data_for_req = data.clone();
+            let block_id_for_req = block_id.clone();
 
             let result = blob_client
                 .put_block(block_id_for_req, data_for_req)
