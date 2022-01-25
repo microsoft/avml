@@ -2,10 +2,14 @@
 // Licensed under the MIT License.
 
 use anyhow::{bail, Context, Result};
-use std::{fs::OpenOptions, io::prelude::*, path::Path};
+use std::{fs::OpenOptions, io::prelude::*, ops::Range, path::Path};
 
 /// Parse /proc/iomem and return System RAM memory ranges
-pub fn parse(path: &Path) -> Result<Vec<std::ops::Range<u64>>> {
+pub fn parse() -> Result<Vec<Range<u64>>> {
+    parse_file(Path::new("/proc/iomem"))
+}
+
+fn parse_file(path: &Path) -> Result<Vec<Range<u64>>> {
     let mut f = OpenOptions::new()
         .read(true)
         .open(path)
@@ -40,13 +44,77 @@ pub fn parse(path: &Path) -> Result<Vec<std::ops::Range<u64>>> {
     Ok(ranges)
 }
 
+#[must_use]
+pub fn merge_ranges(mut ranges: Vec<Range<u64>>) -> Vec<Range<u64>> {
+    let mut result = vec![];
+    ranges.sort_unstable_by_key(|r| r.start);
+
+    while !ranges.is_empty() {
+        let mut range = ranges.remove(0);
+        while !ranges.is_empty() && range.end >= ranges[0].start {
+            let next = ranges.remove(0);
+            range = range.start..next.end;
+        }
+        result.push(range);
+    }
+
+    result
+}
+
+pub fn split_ranges(ranges: Vec<Range<u64>>, max_size: u64) -> Result<Vec<Range<u64>>> {
+    let mut result = vec![];
+
+    for mut range in ranges {
+        while range.end - range.start > max_size {
+            result.push(Range {
+                start: range.start,
+                end: range.start + max_size,
+            });
+            range.start += max_size;
+        }
+        if !range.is_empty() {
+            result.push(range);
+        }
+    }
+
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn parse_iomem() {
-        let ranges = parse(Path::new("test/iomem.txt")).unwrap();
+    fn test_merge_ranges() {
+        let result = merge_ranges(vec![0..3, 3..6, 7..10, 12..15]);
+        let expected = [0..6, 7..10, 12..15];
+        assert_eq!(result, expected);
+
+        let result = merge_ranges(vec![0..3, 3..6, 6..10]);
+        let expected = [0..10];
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_split_ranges() -> Result<()> {
+        let result = split_ranges(vec![0..30], 10)?;
+        let expected = [0..10, 10..20, 20..30];
+        assert_eq!(result, expected);
+
+        let result = split_ranges(vec![0..30], 7)?;
+        let expected = [0..7, 7..14, 14..21, 21..28, 28..30];
+        assert_eq!(result, expected);
+
+        let result = split_ranges(vec![0..10, 10..20, 20..30], 7)?;
+        let expected = [0..7, 7..10, 10..17, 17..20, 20..27, 27..30];
+        assert_eq!(result, expected);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_iomem() -> Result<()> {
+        let ranges = parse_file(Path::new("test/iomem.txt"))?;
         let expected = [
             4096..654_335,
             1_048_576..1_073_676_287,
@@ -54,7 +122,7 @@ mod tests {
         ];
         assert_eq!(ranges, expected);
 
-        let ranges = parse(Path::new("test/iomem-2.txt")).unwrap();
+        let ranges = parse_file(Path::new("test/iomem-2.txt"))?;
         let expected = [
             4096..655_359,
             1_048_576..1_055_838_207,
@@ -64,7 +132,7 @@ mod tests {
         ];
         assert_eq!(ranges, expected);
 
-        let ranges = parse(Path::new("test/iomem-3.txt")).unwrap();
+        let ranges = parse_file(Path::new("test/iomem-3.txt"))?;
         let expected = [
             65_536..649_215,
             1_048_576..2_146_303_999,
@@ -72,16 +140,18 @@ mod tests {
         ];
         assert_eq!(ranges, expected);
 
-        let ranges = parse(Path::new("test/iomem-4.txt")).unwrap();
+        let ranges = parse_file(Path::new("test/iomem-4.txt"))?;
         let expected = [
-            4096..655359,
-            1048576..1423523839,
-            1423585280..1511186431,
-            1780150272..1818623999,
-            1818828800..1843613695,
-            2071535616..2071986175,
-            4294967296..414464344063,
+            4_096..655_359,
+            1_048_576..1_423_523_839,
+            1_423_585_280..1_511_186_431,
+            1_780_150_272..1_818_623_999,
+            1_818_828_800..1_843_613_695,
+            2_071_535_616..2_071_986_175,
+            4_294_967_296..414_464_344_063,
         ];
         assert_eq!(ranges, expected);
+
+        Ok(())
     }
 }

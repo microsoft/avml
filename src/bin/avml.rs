@@ -3,6 +3,7 @@
 
 use anyhow::{anyhow, bail, Context, Result};
 use argh::FromArgs;
+use avml::image::Block;
 #[cfg(feature = "blobstore")]
 use avml::ONE_MB;
 use std::{
@@ -100,29 +101,43 @@ fn kcore(ranges: &[Range<u64>], filename: &Path, version: u32) -> Result<()> {
                 filename.display()
             )
         })?;
+
     let mut file = elf::File::open_stream(&mut image.src)
         .map_err(|e| anyhow!("unable to parse ELF structures from /proc/kcore: {:?}", e))?;
     file.phdrs.retain(|&x| x.progtype == elf::types::PT_LOAD);
     file.phdrs.sort_by(|a, b| a.vaddr.cmp(&b.vaddr));
     let start = file.phdrs[0].vaddr - ranges[0].start;
 
+    let mut blocks = vec![];
     for range in ranges {
         for phdr in &file.phdrs {
             if range.start == phdr.vaddr - start {
-                image.write_block(
-                    phdr.offset,
-                    Range {
-                        start: range.start,
-                        end: range.start + phdr.memsz,
-                    },
-                )?;
+                blocks.push(Block {
+                    offset: phdr.offset,
+                    range: range.start..range.start + phdr.memsz,
+                });
             }
         }
     }
+
+    image.write_blocks(&blocks)?;
     Ok(())
 }
 
 fn phys(ranges: &[Range<u64>], filename: &Path, mem: &Path, version: u32) -> Result<()> {
+    let is_crash = mem == Path::new("/dev/crash");
+    let blocks = ranges
+        .iter()
+        .map(|x| Block {
+            offset: x.start,
+            range: if is_crash {
+                x.start..((x.end >> 12) << 12)
+            } else {
+                x.start..x.end
+            },
+        })
+        .collect::<Vec<_>>();
+
     let mut image = avml::image::Image::new(version, mem, filename).with_context(|| {
         format!(
             "unable to create image. source:{} destination:{}",
@@ -130,23 +145,8 @@ fn phys(ranges: &[Range<u64>], filename: &Path, mem: &Path, version: u32) -> Res
             filename.display()
         )
     })?;
-    for range in ranges {
-        let end = if mem == Path::new("/dev/crash") {
-            (range.end >> 12) << 12
-        } else {
-            range.end
-        };
 
-        image
-            .write_block(
-                range.start,
-                Range {
-                    start: range.start,
-                    end,
-                },
-            )
-            .with_context(|| format!("unable to write block: {}:{}", range.start, end))?;
-    }
+    image.write_blocks(&blocks)?;
 
     Ok(())
 }
@@ -169,8 +169,7 @@ fn read_src(ranges: &[Range<u64>], src: &Source, dst: &Path, version: u32) -> Re
 }
 
 fn get_mem(src: Option<&Source>, dst: &Path, version: u32) -> Result<()> {
-    let ranges =
-        avml::iomem::parse(Path::new("/proc/iomem")).context("parsing /proc/iomem failed")?;
+    let ranges = avml::iomem::parse().context("unable to parse /proc/iomem")?;
 
     if let Some(src) = src {
         read_src(&ranges, src, dst, version)

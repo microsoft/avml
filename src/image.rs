@@ -13,6 +13,7 @@ use std::{
     path::Path,
 };
 
+pub const MAX_BLOCK_SIZE: u64 = 0x1000 * 0x1000;
 const PAGE_SIZE: usize = 0x1000;
 const LIME_MAGIC: u32 = 0x4c69_4d45; // EMiL as u32le
 const AVML_MAGIC: u32 = 0x4c4d_5641; // AVML as u32le
@@ -21,6 +22,11 @@ const AVML_MAGIC: u32 = 0x4c4d_5641; // AVML as u32le
 pub struct Header {
     pub range: Range<u64>,
     pub version: u32,
+}
+
+pub struct Block {
+    pub offset: u64,
+    pub range: Range<u64>,
 }
 
 impl Header {
@@ -95,7 +101,44 @@ where
     Ok(())
 }
 
-fn copy_block_impl<R, W>(header: &Header, src: &mut R, mut dst: &mut W) -> Result<()>
+// read the entire block into memory, and only write it if it's not empty
+fn copy_if_nonzero<R, W>(header: &Header, src: &mut R, mut dst: &mut W) -> Result<()>
+where
+    R: Read,
+    W: Write + Seek,
+{
+    let size = usize::try_from(header.range.end - header.range.start)
+        .context("unable to create image range size")?;
+
+    let mut buf = vec![0; size];
+    src.read_exact(&mut buf)?;
+
+    // if the entire block is zero, we can skip it
+    if buf.iter().all(|x| x == &0) {
+        return Ok(());
+    }
+
+    header.write(dst)?;
+    if header.version == 1 {
+        dst.write_all(&buf)?;
+    } else {
+        let begin = dst
+            .seek(SeekFrom::Current(0))
+            .context("unable to seek to location")?;
+        {
+            let mut snap_fh = FrameEncoder::new(&mut dst);
+            snap_fh.write_all(&buf)?;
+        }
+        let end = dst.seek(SeekFrom::Current(0)).context("seek failed")?;
+        let mut size_bytes = [0; 8];
+        LittleEndian::write_u64_into(&[end - begin], &mut size_bytes);
+        dst.write_all(&size_bytes)
+            .context("write_all of size failed")?;
+    }
+    Ok(())
+}
+
+fn copy_large_block<R, W>(header: &Header, src: &mut R, mut dst: &mut W) -> Result<()>
 where
     R: Read,
     W: Write + Seek,
@@ -122,18 +165,28 @@ where
     Ok(())
 }
 
+fn copy_block_impl<R, W>(header: &Header, src: &mut R, dst: &mut W) -> Result<()>
+where
+    R: Read,
+    W: Write + Seek,
+{
+    if header.range.end - header.range.start > MAX_BLOCK_SIZE {
+        copy_large_block(header, src, dst)
+    } else {
+        copy_if_nonzero(header, src, dst)
+    }
+}
+
 pub fn copy_block<R, W>(mut header: Header, src: &mut R, dst: &mut W) -> Result<()>
 where
     R: Read,
     W: Write + Seek,
 {
     if header.version == 2 {
-        let max_size =
-            u64::try_from(100 * 256 * PAGE_SIZE).context("unable to create image range size")?;
-        while header.range.end - header.range.start > max_size {
+        while header.range.end - header.range.start > MAX_BLOCK_SIZE {
             let range = Range {
                 start: header.range.start,
-                end: header.range.start + max_size,
+                end: header.range.start + MAX_BLOCK_SIZE,
             };
             copy_block_impl(
                 &Header {
@@ -144,7 +197,7 @@ where
                 dst,
             )
             .with_context(|| format!("unable to copy block: {:?}", range))?;
-            header.range.start += max_size;
+            header.range.start += MAX_BLOCK_SIZE;
         }
     }
     if header.range.end > header.range.start {
@@ -177,20 +230,27 @@ impl Image {
         Ok(Self { version, src, dst })
     }
 
-    pub fn write_block(&mut self, offset: u64, range: Range<u64>) -> Result<()> {
+    pub fn write_blocks(&mut self, blocks: &[Block]) -> Result<()> {
+        for block in blocks {
+            self.write_block(block)?;
+        }
+        Ok(())
+    }
+
+    fn write_block(&mut self, block: &Block) -> Result<()> {
         let header = Header {
-            range: range.clone(),
+            range: block.range.clone(),
             version: self.version,
         };
 
-        if offset > 0 {
+        if block.offset > 0 {
             self.src
-                .seek(SeekFrom::Start(offset))
-                .with_context(|| format!("unable to seek to block: {}", offset))?;
+                .seek(SeekFrom::Start(block.offset))
+                .with_context(|| format!("unable to seek to block: {}", block.offset))?;
         }
 
         copy_block(header, &mut self.src, &mut self.dst)
-            .with_context(|| format!("unable to copy block: {:?}", range))?;
+            .with_context(|| format!("unable to copy block: {:?}", block.range))?;
         Ok(())
     }
 }
