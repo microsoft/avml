@@ -109,15 +109,22 @@ fn kcore(ranges: &[Range<u64>], filename: &Path, version: u32) -> Result<()> {
     let start = file.phdrs[0].vaddr - ranges[0].start;
 
     let mut blocks = vec![];
-    for range in ranges {
+    'outer: for range in ranges {
         for phdr in &file.phdrs {
             if range.start == phdr.vaddr - start {
+                let size = u64::min(phdr.memsz, range.end - range.start);
                 blocks.push(Block {
                     offset: phdr.offset,
-                    range: range.start..range.start + phdr.memsz,
+                    range: range.start..range.start + size,
                 });
+                continue 'outer;
             }
         }
+        bail!(
+            "unable to find memory range: {:016x}:{:016x}",
+            range.start,
+            range.end
+        );
     }
 
     image.write_blocks(&blocks)?;
