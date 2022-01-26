@@ -7,7 +7,7 @@ use snap::write::FrameEncoder;
 use std::{
     convert::TryFrom,
     fs::{File, OpenOptions},
-    io::{prelude::*, Seek, SeekFrom},
+    io::{prelude::*, Cursor, Seek, SeekFrom},
     ops::Range,
     os::unix::fs::OpenOptionsExt,
     path::Path,
@@ -110,8 +110,10 @@ where
     let size = usize::try_from(header.range.end - header.range.start)
         .context("unable to create image range size")?;
 
-    let mut buf = vec![0; size];
-    src.read_exact(&mut buf)?;
+    // read the entire block into memory, but still read page by page
+    let mut buf = Cursor::new(vec![0; size]);
+    copy(size, src, &mut buf)?;
+    let buf = buf.into_inner();
 
     // if the entire block is zero, we can skip it
     if buf.iter().all(|x| x == &0) {
