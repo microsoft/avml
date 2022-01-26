@@ -4,14 +4,10 @@
 
 *A portable volatile memory acquisition tool for Linux.*
 
-AVML is an X86_64 userland volatile memory acquisition tool written in
+AVML is an X86\_64 userland volatile memory acquisition tool written in
 [Rust](https://www.rust-lang.org/), intended to be deployed as a static binary.
 AVML can be used to acquire memory without knowing the target OS distribution
 or kernel a priori.  No on-target compilation or fingerprinting is needed.
-
-## Build Status
-
-[![Build Status](https://dev.azure.com/ms/avml/_apis/build/status/microsoft.avml?branchName=main)](https://dev.azure.com/ms/avml/_build/latest?definitionId=157&branchName=main)
 
 ## Features
 * Save recorded images to external locations via Azure Blob Store or HTTP PUT
@@ -32,6 +28,7 @@ If the memory source is not specified on the commandline, AVML will iterate over
 * RHEL: 6.7, 6.8, 6.9, 7.0, 7.2, 7.3, 7.4, 7.5, 7.7, 8.5
 * Debian: 8, 9, 10, 11
 * Oracle Linux: 6.8, 6.9, 6.10, 7.3, 7.4, 7.5, 7.6, 7.9, 8.5
+* [CBL-Mariner](https://github.com/microsoft/CBL-Mariner): 1.0
 
 # Getting Started
 
