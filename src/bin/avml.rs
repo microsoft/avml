@@ -4,7 +4,6 @@
 use anyhow::{anyhow, bail, Context, Result};
 use argh::FromArgs;
 use avml::image::Block;
-#[cfg(feature = "blobstore")]
 use std::{
     fs::{metadata, OpenOptions},
     ops::Range,
