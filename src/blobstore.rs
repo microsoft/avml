@@ -77,9 +77,9 @@ impl TryFrom<&Url> for SasToken {
     }
 }
 
-async fn upload_blocks(client: Arc<BlobClient>, r: Receiver<UploadChunk>) -> Result<()> {
+async fn upload_blocks(client: Arc<BlobClient>, receiver: Receiver<UploadChunk>) -> Result<()> {
     // the channel will respond with an Err to indicate the channel is closed
-    while let Ok(upload_chunk) = r.recv().await {
+    while let Ok(upload_chunk) = receiver.recv().await {
         let hash = md5::compute(upload_chunk.data.clone()).into();
         retry(ExponentialBackoff::default(), || async {
             let data_for_req = upload_chunk.data.clone();
@@ -107,7 +107,7 @@ async fn upload_blocks(client: Arc<BlobClient>, r: Receiver<UploadChunk>) -> Res
 
 async fn queue_blocks(
     mut file: File,
-    s: Sender<UploadChunk>,
+    sender: Sender<UploadChunk>,
     file_size: usize,
     block_size: usize,
 ) -> Result<BlockList> {
@@ -125,22 +125,18 @@ async fn queue_blocks(
         file.read_exact(&mut data)
             .await
             .context("unable to read from file")?;
-        let block_id = Bytes::from(format!("{:032x}", i));
+        let id = Bytes::from(format!("{:032x}", i));
         block_list
             .blocks
-            .push(BlobBlockType::Uncommitted(BlockId::new(block_id.clone())));
+            .push(BlobBlockType::Uncommitted(BlockId::new(id.clone())));
 
         let data = data.freeze();
 
-        s.send(UploadChunk {
-            id: block_id.clone(),
-            data,
-        })
-        .await?;
+        sender.send(UploadChunk { id, data }).await?;
 
         sent += send_size;
     }
-    s.close();
+    sender.close();
 
     Ok(block_list)
 }
@@ -148,10 +144,10 @@ async fn queue_blocks(
 async fn spawn_uploaders(
     count: usize,
     blob_client: Arc<BlobClient>,
-    r: Receiver<UploadChunk>,
+    receiver: Receiver<UploadChunk>,
 ) -> Result<()> {
     let uploaders: Vec<_> = (0..usize::max(1, count))
-        .map(|_| tokio::spawn(upload_blocks(blob_client.clone(), r.clone())))
+        .map(|_| tokio::spawn(upload_blocks(blob_client.clone(), receiver.clone())))
         .collect();
 
     try_join_all(uploaders)
@@ -249,12 +245,12 @@ pub async fn upload_sas(
     let (block_size, uploaders_count) =
         calc_concurrency(file_size, block_size, upload_concurrency)?;
 
-    let (s, r) = bounded::<UploadChunk>(1);
+    let (sender, receiver) = bounded::<UploadChunk>(1);
 
-    let blob_client = get_client(&sas)?;
+    let blob_client = get_client(sas)?;
 
-    let uploaders = spawn_uploaders(uploaders_count, blob_client.clone(), r);
-    let queue_handle = queue_blocks(file, s, file_size, block_size);
+    let uploaders = spawn_uploaders(uploaders_count, blob_client.clone(), receiver);
+    let queue_handle = queue_blocks(file, sender, file_size, block_size);
 
     let (block_list, ()) = futures::try_join!(queue_handle, uploaders)?;
 
