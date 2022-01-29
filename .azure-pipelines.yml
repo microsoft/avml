@@ -50,3 +50,9 @@ steps:
   inputs:
     targetPath: target/x86_64-unknown-linux-musl/release/avml-upload
     artifactName: avml-upload
+
+- task: ComponentGovernanceComponentDetection@0
+  inputs:
+    scanType: 'Register'
+    verbosity: 'Verbose'
+    alertWarningLevel: 'High'
