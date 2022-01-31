@@ -4,8 +4,6 @@
 use anyhow::{anyhow, bail, Context, Result};
 use argh::FromArgs;
 use avml::image::Block;
-#[cfg(feature = "blobstore")]
-use avml::ONE_MB;
 use std::{
     fs::{metadata, OpenOptions},
     ops::Range,
@@ -45,8 +43,13 @@ struct Config {
 
     /// specify maximum block size in MiB
     #[cfg(feature = "blobstore")]
-    #[argh(option, default = "100")]
-    sas_block_size: usize,
+    #[argh(option)]
+    sas_block_size: Option<usize>,
+
+    /// specify blob upload concurrency
+    #[cfg(feature = "blobstore")]
+    #[argh(option)]
+    sas_block_concurrency: Option<usize>,
 
     /// name of the file to write to on local system
     #[argh(positional)]
@@ -215,12 +218,15 @@ async fn upload(config: &Config) -> Result<()> {
 
     #[cfg(feature = "blobstore")]
     {
-        let sas_block_size = config.sas_block_size * ONE_MB;
-
         if let Some(sas_url) = &config.sas_url {
-            avml::blobstore::upload_sas(&config.filename, sas_url, sas_block_size)
-                .await
-                .context("upload via sas URL failed")?;
+            avml::blobstore::upload_sas(
+                &config.filename,
+                sas_url,
+                config.sas_block_size,
+                config.sas_block_concurrency,
+            )
+            .await
+            .context("upload via sas URL failed")?;
             delete = true;
         }
     }

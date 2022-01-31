@@ -3,7 +3,6 @@
 
 use anyhow::{Context, Result};
 use argh::FromArgs;
-use avml::ONE_MB;
 use std::path::PathBuf;
 use tokio::runtime::Runtime;
 use url::Url;
@@ -34,8 +33,13 @@ struct BlobUpload {
     url: Url,
 
     /// specify maximum block size in MiB
-    #[argh(option, default = "100")]
-    sas_block_size: usize,
+    #[argh(option)]
+    sas_block_size: Option<usize>,
+
+    /// specify blob upload concurrency
+    #[cfg(feature = "blobstore")]
+    #[argh(option)]
+    sas_block_concurrency: Option<usize>,
 }
 
 #[derive(FromArgs)]
@@ -57,12 +61,14 @@ async fn run(cmd: Cmd) -> Result<()> {
         SubCommands::Put(config) => avml::upload::put(&config.filename, &config.url)
             .await
             .context("unable to upload via PUT"),
-        SubCommands::BlobUpload(config) => {
-            let sas_block_size = config.sas_block_size * ONE_MB;
-            avml::blobstore::upload_sas(&config.filename, &config.url, sas_block_size)
-                .await
-                .context("upload via sas URL failed")
-        }
+        SubCommands::BlobUpload(config) => avml::blobstore::upload_sas(
+            &config.filename,
+            &config.url,
+            config.sas_block_size,
+            config.sas_block_concurrency,
+        )
+        .await
+        .context("upload via sas URL failed"),
     }
 }
 
