@@ -219,14 +219,13 @@ async fn upload(config: &Config) -> Result<()> {
     #[cfg(feature = "blobstore")]
     {
         if let Some(sas_url) = &config.sas_url {
-            avml::blobstore::upload_sas(
-                &config.filename,
-                sas_url,
-                config.sas_block_size,
-                config.sas_block_concurrency,
-            )
-            .await
-            .context("upload via sas URL failed")?;
+            let uploader = avml::BlobUploader::new(sas_url)?
+                .block_size(config.sas_block_size)
+                .concurrency(config.sas_block_concurrency);
+            uploader
+                .upload_file(&config.filename)
+                .await
+                .context("upload via SAS URL failed")?;
             delete = true;
         }
     }

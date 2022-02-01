@@ -8,10 +8,13 @@ use azure_core::new_http_client;
 use azure_storage::core::prelude::*;
 use azure_storage_blobs::prelude::*;
 use backoff::{future::retry, ExponentialBackoff};
-use bytes::{Bytes, BytesMut};
+use bytes::Bytes;
 use futures::future::try_join_all;
-use std::{cmp, convert::TryFrom, path::Path, sync::Arc};
-use tokio::{fs::File, io::AsyncReadExt};
+use std::{cmp, convert::TryFrom, marker::Unpin, path::Path, sync::Arc};
+use tokio::{
+    fs::File,
+    io::{AsyncRead, AsyncReadExt},
+};
 use url::Url;
 
 // https://docs.microsoft.com/en-us/azure/storage/blobs/scalability-targets#scale-targets-for-blob-storage
@@ -34,7 +37,7 @@ const MAX_CONCURRENCY: usize = 10;
 // if we're uploading *huge* files, use 100MB chunks
 const REASONABLE_BLOCK_SIZE: usize = ONE_MB * 100;
 
-struct UploadChunk {
+struct UploadBlock {
     id: Bytes,
     data: Bytes,
 }
@@ -77,93 +80,15 @@ impl TryFrom<&Url> for SasToken {
     }
 }
 
-async fn upload_blocks(client: Arc<BlobClient>, receiver: Receiver<UploadChunk>) -> Result<()> {
-    // the channel will respond with an Err to indicate the channel is closed
-    while let Ok(upload_chunk) = receiver.recv().await {
-        let hash = md5::compute(upload_chunk.data.clone()).into();
-        retry(ExponentialBackoff::default(), || async {
-            let data_for_req = upload_chunk.data.clone();
-            let block_id_for_req = upload_chunk.id.clone();
-
-            let result = client
-                .put_block(block_id_for_req, data_for_req)
-                .hash(&hash)
-                .execute()
-                .await;
-            match result {
-                Ok(x) => Ok(x),
-                Err(e) => {
-                    eprintln!("put block failed: {:?}", e);
-                    Err(e.into())
-                }
-            }
-        })
-        .await
-        .map_err(|e| anyhow!("block upload failed after retry: {:?}", e))?;
-    }
-
-    Ok(())
-}
-
-async fn queue_blocks(
-    mut file: File,
-    sender: Sender<UploadChunk>,
-    file_size: usize,
-    block_size: usize,
-) -> Result<BlockList> {
-    let mut block_list = BlockList::default();
-    let mut sent = 0;
-
-    for i in 0..usize::MAX {
-        if sent >= file_size {
-            break;
-        }
-
-        let send_size = cmp::min(block_size, file_size - sent);
-        let mut data = BytesMut::new();
-        data.resize(send_size, 0);
-        file.read_exact(&mut data)
-            .await
-            .context("unable to read from file")?;
-        let id = Bytes::from(format!("{:032x}", i));
-        block_list
-            .blocks
-            .push(BlobBlockType::Uncommitted(BlockId::new(id.clone())));
-
-        let data = data.freeze();
-
-        sender.send(UploadChunk { id, data }).await?;
-
-        sent += send_size;
-    }
-    sender.close();
-
-    Ok(block_list)
-}
-
-async fn spawn_uploaders(
-    count: usize,
-    blob_client: Arc<BlobClient>,
-    receiver: Receiver<UploadChunk>,
-) -> Result<()> {
-    let uploaders: Vec<_> = (0..usize::max(1, count))
-        .map(|_| tokio::spawn(upload_blocks(blob_client.clone(), receiver.clone())))
-        .collect();
-
-    try_join_all(uploaders)
-        .await
-        .context("uploading blocks failed")?;
-
-    Ok(())
-}
-
 fn calc_concurrency(
-    file_size: usize,
+    file_size: Option<usize>,
     block_size: Option<usize>,
     upload_concurrency: Option<usize>,
 ) -> Result<(usize, usize)> {
-    if file_size > BLOB_MAX_FILE_SIZE {
-        bail!("file is too large to upload");
+    if let Some(file_size) = file_size {
+        if file_size > BLOB_MAX_FILE_SIZE {
+            bail!("file is too large to upload");
+        }
     }
 
     let block_size = match block_size {
@@ -174,15 +99,16 @@ fn calc_concurrency(
                 // if the file is small enough to fit with 5MB blocks, use that
                 // to reduce impact for failure retries and increase
                 // concurrency.
-                x if (x < BLOB_MIN_BLOCK_SIZE * BLOB_MAX_BLOCKS) => BLOB_MIN_BLOCK_SIZE,
+                Some(x) if (x < BLOB_MIN_BLOCK_SIZE * BLOB_MAX_BLOCKS) => BLOB_MIN_BLOCK_SIZE,
                 // if the file is large enough that we can fit with 100MB blocks, use that.
-                x if (x < REASONABLE_BLOCK_SIZE * BLOB_MAX_BLOCKS) => REASONABLE_BLOCK_SIZE,
+                Some(x) if (x < REASONABLE_BLOCK_SIZE * BLOB_MAX_BLOCKS) => REASONABLE_BLOCK_SIZE,
                 // otherwise, just use the smallest block size that will fit
                 // within MAX BLOCKS to reduce memory pressure
-                _ => (file_size / BLOB_MAX_BLOCKS) + 1,
+                Some(x) => (x / BLOB_MAX_BLOCKS) + 1,
+                None => REASONABLE_BLOCK_SIZE,
             }
         }
-        // minimum required to hit high throughput performance thresholds
+        // minimum required to hit high-throughput block blob performance thresholds
         Some(x) if (x <= BLOB_MIN_BLOCK_SIZE) => BLOB_MIN_BLOCK_SIZE,
         // otherwise use the user specified value
         Some(x) => x,
@@ -209,59 +135,209 @@ fn calc_concurrency(
     Ok((block_size, upload_concurrency))
 }
 
-fn get_client(sas: &Url) -> Result<Arc<BlobClient>> {
-    let sas: SasToken = sas.try_into()?;
-
-    let http_client = new_http_client();
-    let blob_client = StorageAccountClient::new_sas_token(http_client, &sas.account, &sas.token)?
-        .as_storage_client()
-        .as_container_client(sas.container)
-        .as_blob_client(sas.path);
-
-    Ok(blob_client)
+#[derive(Clone)]
+pub struct BlobUploader {
+    client: Arc<BlobClient>,
+    size: Option<usize>,
+    block_size: Option<usize>,
+    concurrency: Option<usize>,
+    sender: Sender<UploadBlock>,
+    receiver: Receiver<UploadBlock>,
 }
 
-/// Upload a file to Azure Blob Store using a fully qualified SAS token
-pub async fn upload_sas(
-    filename: &Path,
-    sas: &Url,
-    block_size: Option<usize>,
-    upload_concurrency: Option<usize>,
-) -> Result<()> {
-    let file = File::open(filename)
+impl BlobUploader {
+    pub fn new(sas: &Url) -> Result<Self> {
+        let sas: SasToken = sas.try_into()?;
+
+        let http_client = new_http_client();
+        let blob_client =
+            StorageAccountClient::new_sas_token(http_client, &sas.account, &sas.token)?
+                .as_storage_client()
+                .as_container_client(sas.container)
+                .as_blob_client(sas.path);
+
+        Self::with_blob_client(blob_client)
+    }
+
+    /// Create a ``BlobUploader`` with a ``BlobClient`` from ``azure_storage_blobs``.
+    ///
+    /// Ref: <https://docs.rs/azure_storage_blobs/latest/azure_storage_blobs/prelude/struct.BlobClient.html>
+    pub fn with_blob_client(client: Arc<BlobClient>) -> Result<Self> {
+        let (sender, receiver) = bounded::<UploadBlock>(1);
+
+        Ok(Self {
+            client,
+            size: None,
+            block_size: None,
+            concurrency: None,
+            sender,
+            receiver,
+        })
+    }
+
+    /// Specify the size of the file to upload (in bytes)
+    ///
+    /// If the anticipated upload size is not specified, the maximum file
+    /// uploaded will be approximately 5TB.
+    #[must_use]
+    pub fn size(self, size: Option<usize>) -> Self {
+        Self { size, ..self }
+    }
+
+    /// Specify the block size in multiples of 1MB
+    ///
+    /// If the block size is not specified and the size of the content to be
+    /// uploaded is provided, the default block size will be calculated to fit
+    /// within the bounds of the allowed number of blocks and the minimum
+    /// minimum required to hit high-throughput block blob performance
+    /// thresholds.
+    #[must_use]
+    pub fn block_size(self, block_size: Option<usize>) -> Self {
+        Self { block_size, ..self }
+    }
+
+    #[must_use]
+    pub fn concurrency(self, concurrency: Option<usize>) -> Self {
+        Self {
+            concurrency,
+            ..self
+        }
+    }
+
+    /// Upload a file to Azure Blob Store using a fully qualified SAS token
+    pub async fn upload_file(mut self, filename: &Path) -> Result<()> {
+        let file = File::open(filename)
+            .await
+            .context("unable to open file for upload")?;
+
+        let file_size: usize = file
+            .metadata()
+            .await?
+            .len()
+            .try_into()
+            .context("unable to convert file size")?;
+
+        self.size = Some(file_size);
+
+        self.upload_stream(file).await
+    }
+
+    async fn finalize(self, block_ids: Vec<Bytes>) -> Result<()> {
+        let blocks = block_ids
+            .into_iter()
+            .map(|x| BlobBlockType::Uncommitted(BlockId::new(x)))
+            .collect::<Vec<_>>();
+
+        let block_list = BlockList { blocks };
+
+        retry(ExponentialBackoff::default(), || async {
+            let result = self.client.put_block_list(&block_list).execute().await?;
+            Ok(result)
+        })
         .await
-        .context("unable to open file for upload")?;
+        .map_err(|e| anyhow!("block upload failed: {:?}", e))?;
 
-    let file_size: usize = file
-        .metadata()
-        .await?
-        .len()
-        .try_into()
-        .context("unable to convert file size")?;
+        Ok(())
+    }
 
-    // block sizes are multiples of ONE_MB.
-    let block_size = block_size.map(|x| x.saturating_mul(ONE_MB));
+    /// upload a stream to Azure Blob Store using a fully qualified SAS token
+    async fn upload_stream<R>(self, handle: R) -> Result<()>
+    where
+        R: AsyncRead + Unpin,
+    {
+        let block_size = self.block_size.map(|x| x.saturating_mul(ONE_MB));
 
-    let (block_size, uploaders_count) =
-        calc_concurrency(file_size, block_size, upload_concurrency)?;
+        let (block_size, uploaders_count) =
+            calc_concurrency(self.size, block_size, self.concurrency)?;
 
-    let (sender, receiver) = bounded::<UploadChunk>(1);
+        let uploaders = self.uploaders(uploaders_count);
+        let queue_handle = self.block_reader(handle, block_size);
 
-    let blob_client = get_client(sas)?;
+        let (block_list, ()) = futures::try_join!(queue_handle, uploaders)?;
 
-    let uploaders = spawn_uploaders(uploaders_count, blob_client.clone(), receiver);
-    let queue_handle = queue_blocks(file, sender, file_size, block_size);
+        self.finalize(block_list).await
+    }
 
-    let (block_list, ()) = futures::try_join!(queue_handle, uploaders)?;
+    async fn uploaders(&self, count: usize) -> Result<()> {
+        let uploaders: Vec<_> = (0..usize::max(1, count))
+            .map(|_| {
+                tokio::spawn(Self::block_uploader(
+                    self.client.clone(),
+                    self.receiver.clone(),
+                ))
+            })
+            .collect();
 
-    retry(ExponentialBackoff::default(), || async {
-        let result = blob_client.put_block_list(&block_list).execute().await?;
-        Ok(result)
-    })
-    .await
-    .map_err(|e| anyhow!("block upload failed: {:?}", e))?;
+        try_join_all(uploaders)
+            .await
+            .context("uploading blocks failed")?;
 
-    Ok(())
+        Ok(())
+    }
+
+    async fn block_reader<R>(&self, mut handle: R, block_size: usize) -> Result<Vec<Bytes>>
+    where
+        R: AsyncRead + Unpin,
+    {
+        let mut block_list = vec![];
+
+        for i in 0..usize::MAX {
+            let mut data = Vec::with_capacity(block_size);
+
+            let mut take_handle = handle.take(block_size as u64);
+            let read_data = take_handle.read_to_end(&mut data).await?;
+            if read_data == 0 {
+                break;
+            }
+            handle = take_handle.into_inner();
+
+            if data.is_empty() {
+                break;
+            }
+
+            let data = data.into();
+
+            let id = Bytes::from(format!("{:032x}", i));
+
+            block_list.push(id.clone());
+
+            self.sender.send(UploadBlock { id, data }).await?;
+        }
+        self.sender.close();
+
+        Ok(block_list)
+    }
+
+    async fn block_uploader(
+        client: Arc<BlobClient>,
+        receiver: Receiver<UploadBlock>,
+    ) -> Result<()> {
+        // the channel will respond with an Err to indicate the channel is closed
+        while let Ok(upload_chunk) = receiver.recv().await {
+            let hash = md5::compute(upload_chunk.data.clone()).into();
+            retry(ExponentialBackoff::default(), || async {
+                let data_for_req = upload_chunk.data.clone();
+                let block_id_for_req = upload_chunk.id.clone();
+
+                let result = client
+                    .put_block(block_id_for_req, data_for_req)
+                    .hash(&hash)
+                    .execute()
+                    .await;
+                match result {
+                    Ok(x) => Ok(x),
+                    Err(e) => {
+                        eprintln!("put block failed: {:?}", e);
+                        Err(e.into())
+                    }
+                }
+            })
+            .await
+            .map_err(|e| anyhow!("block upload failed after retry: {:?}", e))?;
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -275,70 +351,75 @@ mod tests {
     fn test_calc_concurrency() -> Result<()> {
         assert_eq!(
             (BLOB_MIN_BLOCK_SIZE, 1),
-            calc_concurrency(ONE_MB * 300, Some(1), Some(1))?,
+            calc_concurrency(Some(ONE_MB * 300), Some(1), Some(1))?,
             "specified blocksize would overflow block count, so we use the minimum block size"
         );
 
         assert_eq!(
             (BLOB_MIN_BLOCK_SIZE, 10),
-            calc_concurrency(ONE_GB * 30, Some(ONE_MB), None)?,
+            calc_concurrency(Some(ONE_GB * 30), Some(ONE_MB), None)?,
             "specifying block size of ONE_MB"
         );
 
         assert_eq!(
             (ONE_MB * 100, 2),
-            calc_concurrency(ONE_GB * 30, Some(ONE_MB * 100), None)?,
+            calc_concurrency(Some(ONE_GB * 30), Some(ONE_MB * 100), None)?,
             "specifying block size of 100MB but no concurrency"
         );
 
         assert_eq!(
             (5 * ONE_MB, 10),
-            calc_concurrency(ONE_MB * 400, None, None)?,
+            calc_concurrency(Some(ONE_MB * 400), None, None)?,
             "uploading 400MB file, 5MB chunks, 10 uploaders",
         );
 
         assert_eq!(
             (5 * ONE_MB, 10),
-            calc_concurrency(ONE_GB * 16, None, None)?,
+            calc_concurrency(Some(ONE_GB * 16), None, None)?,
             "uploading 50,000 MB file.   5MB chunks, 10 uploaders",
         );
 
         assert_eq!(
             (5 * ONE_MB, 10),
-            calc_concurrency(ONE_GB * 32, None, None)?,
+            calc_concurrency(Some(ONE_GB * 32), None, None)?,
             "uploading 32GB file"
         );
 
         assert_eq!(
             (ONE_MB * 100, 2),
-            calc_concurrency(ONE_TB, None, None)?,
+            calc_concurrency(Some(ONE_TB), None, None)?,
             "uploading 1TB file"
         );
 
         assert_eq!(
             (100 * ONE_MB, 2),
-            calc_concurrency(ONE_TB * 4, None, None)?,
+            calc_concurrency(Some(ONE_TB * 4), None, None)?,
             "uploading 5TB file.  100MB chunks, 2 uploaders"
         );
 
         assert_eq!(
             (100 * ONE_MB, 2),
-            calc_concurrency(ONE_TB * 4, Some(0), None)?,
+            calc_concurrency(Some(ONE_TB * 4), Some(0), None)?,
             "uploading 5TB file with zero blocksize.  100MB chunks, 2 uploaders"
         );
 
         assert_eq!(
             (100 * ONE_MB, 1),
-            calc_concurrency(ONE_TB * 4, None, Some(0))?,
+            calc_concurrency(Some(ONE_TB * 4), None, Some(0))?,
             "uploading 5TB file with zero concurrency.  100MB chunks, 1 uploader"
         );
 
-        let (block_size, uploaders_count) = calc_concurrency(ONE_TB * 32, None, None)?;
+        let (block_size, uploaders_count) = calc_concurrency(Some(ONE_TB * 32), None, None)?;
         assert!(block_size > REASONABLE_BLOCK_SIZE && block_size < BLOB_MAX_BLOCK_SIZE);
         assert_eq!(uploaders_count, 1);
 
         assert!(
-            calc_concurrency((BLOB_MAX_BLOCKS * BLOB_MAX_BLOCK_SIZE) + 1, None, None).is_err(),
+            calc_concurrency(
+                Some((BLOB_MAX_BLOCKS * BLOB_MAX_BLOCK_SIZE) + 1),
+                None,
+                None
+            )
+            .is_err(),
             "files beyond max size should fail"
         );
         Ok(())
