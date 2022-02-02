@@ -61,14 +61,15 @@ async fn run(cmd: Cmd) -> Result<()> {
         SubCommands::Put(config) => avml::upload::put(&config.filename, &config.url)
             .await
             .context("unable to upload via PUT"),
-        SubCommands::BlobUpload(config) => avml::blobstore::upload_sas(
-            &config.filename,
-            &config.url,
-            config.sas_block_size,
-            config.sas_block_concurrency,
-        )
-        .await
-        .context("upload via sas URL failed"),
+        SubCommands::BlobUpload(config) => {
+            let uploader = avml::BlobUploader::new(&config.url)?
+                .block_size(config.sas_block_size)
+                .concurrency(config.sas_block_concurrency);
+            uploader
+                .upload_file(&config.filename)
+                .await
+                .context("upload via SAS URL failed")
+        }
     }
 }
 
