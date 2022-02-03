@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 use crate::ONE_MB;
-use anyhow::{anyhow, bail, Context, Result};
 use async_channel::{bounded, Receiver, Sender};
 use azure_core::new_http_client;
 use azure_storage::core::prelude::*;
@@ -16,6 +15,44 @@ use tokio::{
     io::{AsyncRead, AsyncReadExt},
 };
 use url::Url;
+
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error("file is too large")]
+    TooLarge,
+
+    #[error("unable to queue block for upload")]
+    QueueBlock(#[from] async_channel::SendError<UploadBlock>),
+
+    #[error("upload block failed after retrying: {0}")]
+    Retry(#[source] Box<dyn std::error::Error + Sync + Send>),
+
+    #[error("upload block failed: {0}")]
+    UploadBlock(#[source] Box<dyn std::error::Error + Sync + Send>),
+
+    #[error("finalizing block uploads failed after retrying: {0}")]
+    Finalize(#[source] Box<dyn std::error::Error + Sync + Send>),
+
+    #[error("uploading blocks failed")]
+    UploadFromQueue(#[source] tokio::task::JoinError),
+
+    #[error("error reading file")]
+    Io(#[from] std::io::Error),
+
+    #[error("Invalid SAS token: {0}")]
+    InvalidSasToken(&'static str),
+
+    #[error("Unable to parse URL: {0}")]
+    UnableToParseToken(#[source] url::ParseError),
+
+    #[error("unexpected status code: {status}")]
+    UnexpectedStatusCode { status: u16 },
+
+    #[error("size conversion error")]
+    SizeConversion,
+}
+
+type Result<T> = std::result::Result<T, Error>;
 
 // https://docs.microsoft.com/en-us/azure/storage/blobs/scalability-targets#scale-targets-for-blob-storage
 const BLOB_MAX_BLOCKS: usize = 50_000;
@@ -37,7 +74,7 @@ const MAX_CONCURRENCY: usize = 10;
 // if we're uploading *huge* files, use 100MB chunks
 const REASONABLE_BLOCK_SIZE: usize = ONE_MB * 100;
 
-struct UploadBlock {
+pub struct UploadBlock {
     id: Bytes,
     data: Bytes,
 }
@@ -50,21 +87,21 @@ struct SasToken {
 }
 
 impl TryFrom<&Url> for SasToken {
-    type Error = anyhow::Error;
+    type Error = Error;
 
     fn try_from(url: &Url) -> Result<Self> {
-        let account = if let Some(host) = url.host_str() {
-            let v: Vec<&str> = host.split_terminator('.').collect();
-            v[0].to_string()
-        } else {
-            bail!("invalid sas token (no account)");
-        };
+        let account = url
+            .host_str()
+            .ok_or(Error::InvalidSasToken("missing host"))?
+            .split_terminator('.')
+            .next()
+            .ok_or(Error::InvalidSasToken("unable to determine account name"))?
+            .to_string();
 
-        let token = if let Some(token) = url.query() {
-            token.to_string()
-        } else {
-            bail!("invalid SAS token");
-        };
+        let token = url
+            .query()
+            .ok_or(Error::InvalidSasToken("missing token"))?
+            .to_string();
 
         let path = url.path();
         let mut v: Vec<&str> = path.split_terminator('/').collect();
@@ -87,7 +124,7 @@ fn calc_concurrency(
 ) -> Result<(usize, usize)> {
     if let Some(file_size) = file_size {
         if file_size > BLOB_MAX_FILE_SIZE {
-            bail!("file is too large to upload");
+            return Err(Error::TooLarge);
         }
     }
 
@@ -151,28 +188,30 @@ impl BlobUploader {
 
         let http_client = new_http_client();
         let blob_client =
-            StorageAccountClient::new_sas_token(http_client, &sas.account, &sas.token)?
+            StorageAccountClient::new_sas_token(http_client, &sas.account, &sas.token)
+                .map_err(Error::UnableToParseToken)?
                 .as_storage_client()
                 .as_container_client(sas.container)
                 .as_blob_client(sas.path);
 
-        Self::with_blob_client(blob_client)
+        Ok(Self::with_blob_client(blob_client))
     }
 
     /// Create a ``BlobUploader`` with a ``BlobClient`` from ``azure_storage_blobs``.
     ///
     /// Ref: <https://docs.rs/azure_storage_blobs/latest/azure_storage_blobs/prelude/struct.BlobClient.html>
-    pub fn with_blob_client(client: Arc<BlobClient>) -> Result<Self> {
+    #[must_use]
+    pub fn with_blob_client(client: Arc<BlobClient>) -> Self {
         let (sender, receiver) = bounded::<UploadBlock>(1);
 
-        Ok(Self {
+        Self {
             client,
             size: None,
             block_size: None,
             concurrency: None,
             sender,
             receiver,
-        })
+        }
     }
 
     /// Specify the size of the file to upload (in bytes)
@@ -206,18 +245,17 @@ impl BlobUploader {
 
     /// Upload a file to Azure Blob Store using a fully qualified SAS token
     pub async fn upload_file(mut self, filename: &Path) -> Result<()> {
-        let file = File::open(filename)
-            .await
-            .context("unable to open file for upload")?;
+        let file = File::open(filename).await?;
 
-        let file_size: usize = file
+        let file_size = file
             .metadata()
             .await?
             .len()
             .try_into()
-            .context("unable to convert file size")?;
+            .map(Some)
+            .map_err(|_| Error::SizeConversion)?;
 
-        self.size = Some(file_size);
+        self.size = file_size;
 
         self.upload_stream(file).await
     }
@@ -235,7 +273,7 @@ impl BlobUploader {
             Ok(result)
         })
         .await
-        .map_err(|e| anyhow!("block upload failed: {:?}", e))?;
+        .map_err(Error::Finalize)?;
 
         Ok(())
     }
@@ -270,7 +308,7 @@ impl BlobUploader {
 
         try_join_all(uploaders)
             .await
-            .context("uploading blocks failed")?;
+            .map_err(Error::UploadFromQueue)?;
 
         Ok(())
     }
@@ -319,21 +357,15 @@ impl BlobUploader {
                 let data_for_req = upload_chunk.data.clone();
                 let block_id_for_req = upload_chunk.id.clone();
 
-                let result = client
+                client
                     .put_block(block_id_for_req, data_for_req)
                     .hash(&hash)
                     .execute()
-                    .await;
-                match result {
-                    Ok(x) => Ok(x),
-                    Err(e) => {
-                        eprintln!("put block failed: {:?}", e);
-                        Err(e.into())
-                    }
-                }
+                    .await
+                    .map_err(Error::UploadBlock)
+                    .map_err(backoff::Error::transient)
             })
-            .await
-            .map_err(|e| anyhow!("block upload failed after retry: {:?}", e))?;
+            .await?;
         }
 
         Ok(())

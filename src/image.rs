@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-use anyhow::{bail, Context, Result};
 use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
 use snap::write::FrameEncoder;
 use std::{
@@ -12,6 +11,38 @@ use std::{
     os::unix::fs::OpenOptionsExt,
     path::Path,
 };
+
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error("unable to write image")]
+    Write(#[source] std::io::Error),
+
+    #[error("unable to read memory")]
+    Read(#[source] std::io::Error),
+
+    #[error("unable to read header: {1}")]
+    ReadHeader(#[source] std::io::Error, &'static str),
+
+    #[error("invalid padding")]
+    InvalidPadding,
+
+    #[error("file is too large")]
+    TooLarge,
+
+    #[error("unimplemented version")]
+    UnimplementedVersion,
+
+    #[error("unsupported format")]
+    UnsupportedFormat,
+
+    #[error("write block failed: {0:?}")]
+    WriteBlock(Range<u64>),
+
+    #[error("size conversion error")]
+    SizeConversion,
+}
+
+type Result<T> = std::result::Result<T, Error>;
 
 pub const MAX_BLOCK_SIZE: u64 = 0x1000 * 0x1000;
 const PAGE_SIZE: usize = 0x1000;
@@ -33,25 +64,25 @@ impl Header {
     pub fn read(mut src: &File) -> Result<Self> {
         let magic = src
             .read_u32::<LittleEndian>()
-            .context("unable to read magic")?;
+            .map_err(|e| Error::ReadHeader(e, "magic"))?;
         let version = src
             .read_u32::<LittleEndian>()
-            .context("unable to read version")?;
+            .map_err(|e| Error::ReadHeader(e, "version"))?;
         let start = src
             .read_u64::<LittleEndian>()
-            .context("unable to read start")?;
+            .map_err(|e| Error::ReadHeader(e, "start offset"))?;
         let end = src
             .read_u64::<LittleEndian>()
-            .context("unable to read end")?
+            .map_err(|e| Error::ReadHeader(e, "end offset"))?
             + 1;
         let padding = src
             .read_u64::<LittleEndian>()
-            .context("unable to read padding")?;
+            .map_err(|e| Error::ReadHeader(e, "padding"))?;
         if padding != 0 {
-            bail!("invalid padding: {}", padding);
+            return Err(Error::InvalidPadding);
         }
         if !(magic == LIME_MAGIC && version == 1 || magic == AVML_MAGIC && version == 2) {
-            bail!("unknown format");
+            return Err(Error::UnsupportedFormat);
         };
 
         Ok(Self {
@@ -64,7 +95,7 @@ impl Header {
         let magic = match self.version {
             1 => LIME_MAGIC,
             2 => AVML_MAGIC,
-            _ => bail!("unimplemented version"),
+            _ => return Err(Error::UnimplementedVersion),
         };
         let mut bytes = [0; 32];
         LittleEndian::write_u32_into(&[magic, self.version], &mut bytes[..8]);
@@ -77,7 +108,7 @@ impl Header {
         W: Write,
     {
         let bytes = self.encode()?;
-        dst.write_all(&bytes)?;
+        dst.write_all(&bytes).map_err(Error::Write)?;
         Ok(())
     }
 }
@@ -89,14 +120,14 @@ where
 {
     let mut buf = vec![0; PAGE_SIZE];
     while size >= PAGE_SIZE {
-        src.read_exact(&mut buf)?;
-        dst.write_all(&buf)?;
+        src.read_exact(&mut buf).map_err(Error::Read)?;
+        dst.write_all(&buf).map_err(Error::Write)?;
         size -= PAGE_SIZE;
     }
     if size > 0 {
         buf.resize(size, 0);
-        src.read_exact(&mut buf)?;
-        dst.write_all(&buf)?;
+        src.read_exact(&mut buf).map_err(Error::Read)?;
+        dst.write_all(&buf).map_err(Error::Write)?;
     }
     Ok(())
 }
@@ -108,7 +139,7 @@ where
     W: Write + Seek,
 {
     let size = usize::try_from(header.range.end - header.range.start)
-        .context("unable to create image range size")?;
+        .map_err(|_| Error::SizeConversion)?;
 
     // read the entire block into memory, but still read page by page
     let mut buf = Cursor::new(vec![0; size]);
@@ -122,20 +153,17 @@ where
 
     header.write(dst)?;
     if header.version == 1 {
-        dst.write_all(&buf)?;
+        dst.write_all(&buf).map_err(Error::Write)?;
     } else {
-        let begin = dst
-            .seek(SeekFrom::Current(0))
-            .context("unable to seek to location")?;
+        let begin = dst.seek(SeekFrom::Current(0)).map_err(Error::Write)?;
         {
             let mut snap_fh = FrameEncoder::new(&mut dst);
-            snap_fh.write_all(&buf)?;
+            snap_fh.write_all(&buf).map_err(Error::Write)?;
         }
-        let end = dst.seek(SeekFrom::Current(0)).context("seek failed")?;
+        let end = dst.seek(SeekFrom::Current(0)).map_err(Error::Write)?;
         let mut size_bytes = [0; 8];
         LittleEndian::write_u64_into(&[end - begin], &mut size_bytes);
-        dst.write_all(&size_bytes)
-            .context("write_all of size failed")?;
+        dst.write_all(&size_bytes).map_err(Error::Write)?;
     }
     Ok(())
 }
@@ -147,22 +175,20 @@ where
 {
     header.write(dst)?;
     let size = usize::try_from(header.range.end - header.range.start)
-        .context("unable to create image range size")?;
+        .map_err(|_| Error::SizeConversion)?;
+
     if header.version == 1 {
         copy(size, src, dst)?;
     } else {
-        let begin = dst
-            .seek(SeekFrom::Current(0))
-            .context("unable to seek to location")?;
+        let begin = dst.seek(SeekFrom::Current(0)).map_err(Error::Write)?;
         {
             let mut snap_fh = FrameEncoder::new(&mut dst);
-            copy(size, src, &mut snap_fh).context("copy failed")?;
+            copy(size, src, &mut snap_fh)?;
         }
-        let end = dst.seek(SeekFrom::Current(0)).context("seek failed")?;
+        let end = dst.seek(SeekFrom::Current(0)).map_err(Error::Write)?;
         let mut size_bytes = [0; 8];
         LittleEndian::write_u64_into(&[end - begin], &mut size_bytes);
-        dst.write_all(&size_bytes)
-            .context("write_all of size failed")?;
+        dst.write_all(&size_bytes).map_err(Error::Write)?;
     }
     Ok(())
 }
@@ -197,14 +223,12 @@ where
                 },
                 src,
                 dst,
-            )
-            .with_context(|| format!("unable to copy block: {:?}", range))?;
+            )?;
             header.range.start += MAX_BLOCK_SIZE;
         }
     }
     if header.range.end > header.range.start {
-        copy_block_impl(&header, src, dst)
-            .with_context(|| format!("unable to copy block: {:?}", header.range))?;
+        copy_block_impl(&header, src, dst)?;
     }
 
     Ok(())
@@ -221,20 +245,22 @@ impl Image {
         let src = OpenOptions::new()
             .read(true)
             .open(src_filename)
-            .with_context(|| format!("unable to open source file: {}", src_filename.display()))?;
+            .map_err(Error::Read)?;
         let dst = OpenOptions::new()
             .mode(0o600)
             .write(true)
             .create(true)
             .truncate(true)
             .open(dst_filename)
-            .with_context(|| format!("unable to destination image: {}", dst_filename.display()))?;
+            .map_err(Error::Write)?;
+
         Ok(Self { version, src, dst })
     }
 
     pub fn write_blocks(&mut self, blocks: &[Block]) -> Result<()> {
         for block in blocks {
-            self.write_block(block)?;
+            self.write_block(block)
+                .map_err(|_| Error::WriteBlock(block.range.clone()))?;
         }
         Ok(())
     }
@@ -248,11 +274,10 @@ impl Image {
         if block.offset > 0 {
             self.src
                 .seek(SeekFrom::Start(block.offset))
-                .with_context(|| format!("unable to seek to block: {}", block.offset))?;
+                .map_err(Error::Read)?;
         }
 
-        copy_block(header, &mut self.src, &mut self.dst)
-            .with_context(|| format!("unable to copy block: {:?}", block.range))?;
+        copy_block(header, &mut self.src, &mut self.dst)?;
         Ok(())
     }
 }

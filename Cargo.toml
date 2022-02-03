@@ -27,7 +27,7 @@ url = { version = "2.2", optional = true }
 tokio-util = { version = "0.6", features = ["codec"] , optional = true }
 tokio = { version = "1.16", default-features = false, optional = true, features = ["fs"] }
 reqwest = { version = "0.11", default-features = false, features = ["rustls-tls"], optional = true}
-anyhow = "1.0"
+thiserror = "1.0"
 md5 = "0.7"
 backoff = { version = "0.4", features = ["tokio"], optional = true}
 azure_storage = { version = "0.1", default-features = false, features = ["enable_reqwest_rustls", "account"], optional = true }

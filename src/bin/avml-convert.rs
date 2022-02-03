@@ -1,13 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-use anyhow::{bail, Error, Result};
 use argh::FromArgs;
-use avml::{
-    image::{Block, MAX_BLOCK_SIZE},
-    iomem::split_ranges,
-    ONE_MB,
-};
+use avml::{image, iomem::split_ranges, Error, Result, Snapshot, Source, ONE_MB};
 use snap::read::FrameDecoder;
 use std::{
     convert::TryFrom,
@@ -19,27 +14,33 @@ use std::{
 };
 
 fn convert(src: &Path, dst: &Path, compress: bool) -> Result<()> {
-    let src_len = metadata(src)?.len();
-    let mut image = avml::image::Image::new(1, src, dst)?;
+    let src_len = metadata(src).map_err(image::Error::Read)?.len();
+    let mut image = image::Image::new(1, src, dst)?;
 
     loop {
-        let current = image.src.seek(SeekFrom::Current(0))?;
+        let current = image
+            .src
+            .seek(SeekFrom::Current(0))
+            .map_err(image::Error::Read)?;
         if current >= src_len {
             break;
         }
 
-        let header = avml::image::Header::read(&image.src)?;
+        let header = image::Header::read(&image.src)?;
         let mut new_header = header.clone();
         new_header.version = if compress { 2 } else { 1 };
 
         match header.version {
             1 => {
-                avml::image::copy_block(new_header, &mut image.src, &mut image.dst)?;
+                image::copy_block(new_header, &mut image.src, &mut image.dst)?;
             }
             2 => {
                 let mut decoder = FrameDecoder::new(&image.src);
-                avml::image::copy_block(new_header, &mut decoder, &mut image.dst)?;
-                image.src.seek(SeekFrom::Current(8))?;
+                image::copy_block(new_header, &mut decoder, &mut image.dst)?;
+                image
+                    .src
+                    .seek(SeekFrom::Current(8))
+                    .map_err(image::Error::Read)?;
             }
             _ => unimplemented!(),
         }
@@ -49,39 +50,50 @@ fn convert(src: &Path, dst: &Path, compress: bool) -> Result<()> {
 }
 
 fn convert_to_raw(src: &Path, dst: &Path) -> Result<()> {
-    let src_len = metadata(src)?.len();
-    let mut image = avml::image::Image::new(1, src, dst)?;
+    let src_len = metadata(src).map_err(image::Error::Read)?.len();
+    let mut image = image::Image::new(1, src, dst)?;
 
     loop {
-        let current = image.src.seek(SeekFrom::Current(0))?;
+        let current = image
+            .src
+            .seek(SeekFrom::Current(0))
+            .map_err(image::Error::Read)?;
         if current >= src_len {
             break;
         }
-        let current_dst = image.dst.seek(SeekFrom::Current(0))?;
+        let current_dst = image
+            .dst
+            .seek(SeekFrom::Current(0))
+            .map_err(image::Error::Read)?;
 
-        let header = avml::image::Header::read(&image.src)?;
+        let header = image::Header::read(&image.src)?;
         let mut zeros = vec![0; ONE_MB];
 
-        let mut unmapped = usize::try_from(header.range.start - current_dst)?;
+        let mut unmapped = usize::try_from(header.range.start - current_dst)
+            .map_err(|_| image::Error::SizeConversion)?;
         while unmapped > ONE_MB {
-            image.dst.write_all(&zeros)?;
+            image.dst.write_all(&zeros).map_err(image::Error::Write)?;
             unmapped -= ONE_MB;
         }
         if unmapped > 0 {
             zeros.resize(unmapped, 0);
-            image.dst.write_all(&zeros)?;
+            image.dst.write_all(&zeros).map_err(image::Error::Write)?;
         }
 
-        let size = usize::try_from(header.range.end - header.range.start)?;
+        let size = usize::try_from(header.range.end - header.range.start)
+            .map_err(|_| image::Error::SizeConversion)?;
 
         match header.version {
             1 => {
-                avml::image::copy(size, &mut image.src, &mut image.dst)?;
+                image::copy(size, &mut image.src, &mut image.dst)?;
             }
             2 => {
                 let mut decoder = FrameDecoder::new(&image.src);
-                avml::image::copy(size, &mut decoder, &mut image.dst)?;
-                image.src.seek(SeekFrom::Current(8))?;
+                image::copy(size, &mut decoder, &mut image.dst)?;
+                image
+                    .src
+                    .seek(SeekFrom::Current(8))
+                    .map_err(image::Error::Read)?;
             }
             _ => unimplemented!(),
         }
@@ -91,21 +103,19 @@ fn convert_to_raw(src: &Path, dst: &Path) -> Result<()> {
 }
 
 fn convert_from_raw(src: &Path, dst: &Path, compress: bool) -> Result<()> {
-    let src_len = metadata(&src)?.len();
+    let src_len = metadata(src).map_err(image::Error::Read)?.len();
+    let ranges = split_ranges(vec![0..src_len], image::MAX_BLOCK_SIZE)?;
+
     let version = if compress { 2 } else { 1 };
-    let mut image = avml::image::Image::new(version, src, dst)?;
 
-    let ranges = split_ranges(vec![0..src_len], MAX_BLOCK_SIZE)?;
+    let source = Source::Raw(src.to_owned());
 
-    let blocks = ranges
-        .iter()
-        .map(|x| Block {
-            offset: x.start,
-            range: x.start..x.end,
-        })
-        .collect::<Vec<_>>();
+    Snapshot::new(dst, ranges)
+        .version(version)
+        .source(Some(&source))
+        .create()?;
 
-    image.write_blocks(&blocks)
+    Ok(())
 }
 
 #[derive(FromArgs)]
@@ -135,13 +145,13 @@ enum Format {
 }
 
 impl FromStr for Format {
-    type Err = Error;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    type Err = image::Error;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         let x = match s {
             "raw" => Self::Raw,
             "lime" => Self::Lime,
             "lime_compressed" => Self::LimeCompressed,
-            _ => bail!("unsupported format"),
+            _ => return Err(image::Error::UnsupportedFormat),
         };
         Ok(x)
     }
@@ -160,6 +170,6 @@ fn main() -> Result<()> {
         (Format::Raw, Format::LimeCompressed) => convert_from_raw(&config.src, &config.dst, true),
         (Format::Lime, Format::Lime)
         | (Format::LimeCompressed, Format::LimeCompressed)
-        | (Format::Raw, Format::Raw) => bail!("no conversion required"),
+        | (Format::Raw, Format::Raw) => Err(Error::NoConversionRequired),
     }
 }
