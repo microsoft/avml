@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+use crate::write_counter::Counter;
 use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
 use snap::write::FrameEncoder;
 use std::{
@@ -136,7 +137,7 @@ where
 fn copy_if_nonzero<R, W>(header: &Header, src: &mut R, mut dst: &mut W) -> Result<()>
 where
     R: Read,
-    W: Write + Seek,
+    W: Write,
 {
     let size = usize::try_from(header.range.end - header.range.start)
         .map_err(|_| Error::SizeConversion)?;
@@ -155,14 +156,21 @@ where
     if header.version == 1 {
         dst.write_all(&buf).map_err(Error::Write)?;
     } else {
-        let begin = dst.seek(SeekFrom::Current(0)).map_err(Error::Write)?;
-        {
-            let mut snap_fh = FrameEncoder::new(&mut dst);
-            snap_fh.write_all(&buf).map_err(Error::Write)?;
-        }
-        let end = dst.seek(SeekFrom::Current(0)).map_err(Error::Write)?;
+        let count = {
+            let mut counter = Counter::new(dst);
+            {
+                let mut snap_fh = FrameEncoder::new(&mut counter);
+                snap_fh.write_all(&buf).map_err(Error::Write)?;
+            }
+            let count = counter.count();
+            dst = counter.into_inner();
+            count
+        };
+        let count = count.try_into().map_err(|_| Error::SizeConversion)?;
+
         let mut size_bytes = [0; 8];
-        LittleEndian::write_u64_into(&[end - begin], &mut size_bytes);
+        LittleEndian::write_u64_into(&[count], &mut size_bytes);
+
         dst.write_all(&size_bytes).map_err(Error::Write)?;
     }
     Ok(())
@@ -171,7 +179,7 @@ where
 fn copy_large_block<R, W>(header: &Header, src: &mut R, mut dst: &mut W) -> Result<()>
 where
     R: Read,
-    W: Write + Seek,
+    W: Write,
 {
     header.write(dst)?;
     let size = usize::try_from(header.range.end - header.range.start)
@@ -180,14 +188,20 @@ where
     if header.version == 1 {
         copy(size, src, dst)?;
     } else {
-        let begin = dst.seek(SeekFrom::Current(0)).map_err(Error::Write)?;
-        {
-            let mut snap_fh = FrameEncoder::new(&mut dst);
-            copy(size, src, &mut snap_fh)?;
-        }
-        let end = dst.seek(SeekFrom::Current(0)).map_err(Error::Write)?;
+        let count = {
+            let mut counter = Counter::new(dst);
+            {
+                let mut snap_fh = FrameEncoder::new(&mut counter);
+                copy(size, src, &mut snap_fh)?;
+            }
+            let count = counter.count();
+            dst = counter.into_inner();
+            count
+        };
+        let count = count.try_into().map_err(|_| Error::SizeConversion)?;
+
         let mut size_bytes = [0; 8];
-        LittleEndian::write_u64_into(&[end - begin], &mut size_bytes);
+        LittleEndian::write_u64_into(&[count], &mut size_bytes);
         dst.write_all(&size_bytes).map_err(Error::Write)?;
     }
     Ok(())
@@ -196,7 +210,7 @@ where
 fn copy_block_impl<R, W>(header: &Header, src: &mut R, dst: &mut W) -> Result<()>
 where
     R: Read,
-    W: Write + Seek,
+    W: Write,
 {
     if header.range.end - header.range.start > MAX_BLOCK_SIZE {
         copy_large_block(header, src, dst)
@@ -208,7 +222,7 @@ where
 pub fn copy_block<R, W>(mut header: Header, src: &mut R, dst: &mut W) -> Result<()>
 where
     R: Read,
-    W: Write + Seek,
+    W: Write,
 {
     if header.version == 2 {
         while header.range.end - header.range.start > MAX_BLOCK_SIZE {

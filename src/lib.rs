@@ -3,8 +3,9 @@
 
 pub mod image;
 pub mod iomem;
-pub mod snapshot;
-pub mod upload;
+mod snapshot;
+mod upload;
+mod write_counter;
 
 #[cfg(feature = "blobstore")]
 pub use crate::upload::blobstore::BlobUploader;
