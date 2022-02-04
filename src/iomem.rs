@@ -70,7 +70,8 @@ pub fn merge_ranges(mut ranges: Vec<Range<u64>>) -> Vec<Range<u64>> {
     result
 }
 
-pub fn split_ranges(ranges: Vec<Range<u64>>, max_size: u64) -> Result<Vec<Range<u64>>, Error> {
+#[must_use]
+pub fn split_ranges(ranges: Vec<Range<u64>>, max_size: u64) -> Vec<Range<u64>> {
     let mut result = vec![];
 
     for mut range in ranges {
@@ -86,7 +87,7 @@ pub fn split_ranges(ranges: Vec<Range<u64>>, max_size: u64) -> Result<Vec<Range<
         }
     }
 
-    Ok(result)
+    result
 }
 
 #[cfg(test)]
@@ -106,15 +107,15 @@ mod tests {
 
     #[test]
     fn test_split_ranges() -> Result<(), Error> {
-        let result = split_ranges(vec![0..30], 10)?;
+        let result = split_ranges(vec![0..30], 10);
         let expected = [0..10, 10..20, 20..30];
         assert_eq!(result, expected);
 
-        let result = split_ranges(vec![0..30], 7)?;
+        let result = split_ranges(vec![0..30], 7);
         let expected = [0..7, 7..14, 14..21, 21..28, 28..30];
         assert_eq!(result, expected);
 
-        let result = split_ranges(vec![0..10, 10..20, 20..30], 7)?;
+        let result = split_ranges(vec![0..10, 10..20, 20..30], 7);
         let expected = [0..7, 7..10, 10..17, 17..20, 20..27, 27..30];
         assert_eq!(result, expected);
 
