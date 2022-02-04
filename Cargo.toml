@@ -39,6 +39,7 @@ async-channel = {version="1.6", optional=true}
 opt-level="z"
 lto=true
 panic="abort"
+codegen-units=1
 
 [[bin]]
 name = "avml-upload"
