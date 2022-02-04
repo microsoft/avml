@@ -143,7 +143,7 @@ pub struct Snapshot<'a, 'b> {
 impl<'a, 'b> Snapshot<'a, 'b> {
     /// Create a new memory snapshot.
     ///
-    /// The default version implements the LiME format.
+    /// The default version implements the `LiME` format.
     #[must_use]
     pub fn new(destination: &'a Path, memory_ranges: Vec<Range<u64>>) -> Self {
         Self {
