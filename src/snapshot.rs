@@ -46,9 +46,34 @@ type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Clone)]
 pub enum Source {
+    ///  `/dev/crash` provides a read-only view of physical memory.  Access to
+    ///  memory using this device must be paged aligned and read one page at a
+    ///  time.
+    ///
+    /// On RHEL based distributions, this device is frequently provided by
+    /// default.  A loadable kernel module version is available as part of
+    /// the Linux utility `crash`:
+    /// <https://github.com/crash-utility/crash/tree/master/memory_driver>
     DevCrash,
+
+    ///  `/dev/mem` provides a read-write view of physical memory, though AVML
+    ///  opens it in a read-only fashion.  Access to to memory using this device
+    ///  can be disabled using the kernel configuration options
+    ///  `CONFIG_STRICT_DEVMEM` or `CONFIG_IO_STRICT_DEVMEM`.
+    ///
+    /// With `CONFIG_STRICT_DEVMEM`, only the first 1MB of memory can be
+    /// accessed.
     DevMem,
+
+    ///  `/proc/kcore` provides a virtual ELF coredump of kernel memory.  This can
+    /// be used to access physical memory.
+    ///
+    /// If LOCKDOWN_KCORE is set in the kernel, then /proc/kcore may exist but
+    /// is either inaccessible or doesn't allow access to all of the kernel
+    /// memory.
     ProcKcore,
+
+    /// User-specified path to a raw memory file
     Raw(PathBuf),
 }
 
@@ -116,6 +141,9 @@ pub struct Snapshot<'a, 'b> {
 }
 
 impl<'a, 'b> Snapshot<'a, 'b> {
+    /// Create a new memory snapshot.
+    ///
+    /// The default version implements the `LiME` format.
     #[must_use]
     pub fn new(destination: &'a Path, memory_ranges: Vec<Range<u64>>) -> Self {
         Self {
@@ -132,7 +160,7 @@ impl<'a, 'b> Snapshot<'a, 'b> {
         Self { source, ..self }
     }
 
-    /// Specify the source for creating the snapshot
+    /// Specify the version of the snapshot format
     #[must_use]
     pub fn version(self, version: u32) -> Self {
         Self { version, ..self }
@@ -148,6 +176,7 @@ impl<'a, 'b> Snapshot<'a, 'b> {
         .map_err(|e| Error::UnableToCreateSnapshotFromSource(Box::new(e), src.clone()))
     }
 
+    /// Create a memory snapshot
     pub fn create(&self) -> Result<()> {
         if let Some(src) = self.source {
             self.from_source(src)?;
