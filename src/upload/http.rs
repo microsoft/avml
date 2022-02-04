@@ -1,24 +1,35 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-use anyhow::{bail, Context, Result};
 use reqwest::{Body, Client, StatusCode};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tokio::fs::File;
 use tokio_util::codec::{BytesCodec, FramedRead};
 use url::Url;
 
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error("error reading file: {1}")]
+    Io(#[source] std::io::Error, PathBuf),
+
+    #[error("HTTP request error")]
+    Request(#[from] reqwest::Error),
+
+    #[error("unexpected status code: {status}")]
+    UnexpectedStatusCode { status: u16 },
+}
+
 /// Upload a file via HTTP PUT
 #[cfg(feature = "put")]
-pub async fn put(filename: &Path, url: &Url) -> Result<()> {
+pub async fn put(filename: &Path, url: &Url) -> Result<(), Error> {
     let file = File::open(&filename)
         .await
-        .with_context(|| format!("unable to open image file: {}", filename.display()))?;
+        .map_err(|e| Error::Io(e, filename.to_owned()))?;
 
     let size = file
         .metadata()
         .await
-        .context("unable to get file size")?
+        .map_err(|e| Error::Io(e, filename.to_owned()))?
         .len();
 
     let stream = FramedRead::new(file, BytesCodec::new());
@@ -31,11 +42,12 @@ pub async fn put(filename: &Path, url: &Url) -> Result<()> {
         .header("Content-Length", size)
         .body(body)
         .send()
-        .await
-        .context("unable to PUT file")?;
+        .await?;
 
     if res.status() != StatusCode::CREATED {
-        bail!("unable to upload memory to blob store");
+        return Err(Error::UnexpectedStatusCode {
+            status: res.status().as_u16(),
+        });
     }
     Ok(())
 }

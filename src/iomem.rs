@@ -1,22 +1,31 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-use anyhow::{bail, Context, Result};
 use std::{fs::OpenOptions, io::prelude::*, ops::Range, path::Path};
 
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error("unable to read from /proc/iomem")]
+    Io(#[from] std::io::Error),
+
+    #[error("unable to parse values")]
+    Parse(#[from] std::num::ParseIntError),
+
+    #[error("need CAP_SYS_ADMIN to read /proc/iomem")]
+    PermissionDenied,
+}
+
 /// Parse /proc/iomem and return System RAM memory ranges
-pub fn parse() -> Result<Vec<Range<u64>>> {
+pub fn parse() -> Result<Vec<Range<u64>>, Error> {
     parse_file(Path::new("/proc/iomem"))
 }
 
-fn parse_file(path: &Path) -> Result<Vec<Range<u64>>> {
-    let mut f = OpenOptions::new()
-        .read(true)
-        .open(path)
-        .with_context(|| format!("unable to open file: {}", path.display()))?;
+fn parse_file(path: &Path) -> Result<Vec<Range<u64>>, Error> {
+    let mut f = OpenOptions::new().read(true).open(path)?;
+    // .with_context(|| format!("unable to open file: {}", path.display()))?;
     let mut buffer = String::new();
-    f.read_to_string(&mut buffer)
-        .with_context(|| format!("unable to read file: {}", path.display()))?;
+    f.read_to_string(&mut buffer)?;
+    // .with_context(|| format!("unable to read file: {}", path.display()))?;
 
     let mut ranges = Vec::new();
     for line in buffer.split_terminator('\n') {
@@ -36,7 +45,7 @@ fn parse_file(path: &Path) -> Result<Vec<Range<u64>>> {
         let start = u64::from_str_radix(start, 16)?;
         let end = u64::from_str_radix(end, 16)?;
         if start == 0 && end == 0 {
-            bail!("Need CAP_SYS_ADMIN to read /proc/iomem");
+            return Err(Error::PermissionDenied);
         }
         ranges.push(start..end);
     }
@@ -61,7 +70,7 @@ pub fn merge_ranges(mut ranges: Vec<Range<u64>>) -> Vec<Range<u64>> {
     result
 }
 
-pub fn split_ranges(ranges: Vec<Range<u64>>, max_size: u64) -> Result<Vec<Range<u64>>> {
+pub fn split_ranges(ranges: Vec<Range<u64>>, max_size: u64) -> Result<Vec<Range<u64>>, Error> {
     let mut result = vec![];
 
     for mut range in ranges {
@@ -96,7 +105,7 @@ mod tests {
     }
 
     #[test]
-    fn test_split_ranges() -> Result<()> {
+    fn test_split_ranges() -> Result<(), Error> {
         let result = split_ranges(vec![0..30], 10)?;
         let expected = [0..10, 10..20, 20..30];
         assert_eq!(result, expected);
@@ -113,7 +122,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_iomem() -> Result<()> {
+    fn test_parse_iomem() -> Result<(), Error> {
         let ranges = parse_file(Path::new("test/iomem.txt"))?;
         let expected = [
             4096..654_335,

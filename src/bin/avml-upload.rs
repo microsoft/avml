@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-use anyhow::{Context, Result};
 use argh::FromArgs;
+use avml::{put, BlobUploader, Error};
 use std::path::PathBuf;
 use tokio::runtime::Runtime;
 use url::Url;
@@ -56,27 +56,21 @@ struct Cmd {
     subcommand: SubCommands,
 }
 
-async fn run(cmd: Cmd) -> Result<()> {
+async fn run(cmd: Cmd) -> avml::Result<()> {
     match cmd.subcommand {
-        SubCommands::Put(config) => avml::upload::put(&config.filename, &config.url)
-            .await
-            .context("unable to upload via PUT"),
+        SubCommands::Put(config) => put(&config.filename, &config.url).await?,
         SubCommands::BlobUpload(config) => {
-            let uploader = avml::BlobUploader::new(&config.url)?
+            let uploader = BlobUploader::new(&config.url)?
                 .block_size(config.sas_block_size)
                 .concurrency(config.sas_block_concurrency);
-            uploader
-                .upload_file(&config.filename)
-                .await
-                .context("upload via SAS URL failed")
+            uploader.upload_file(&config.filename).await?;
         }
     }
+    Ok(())
 }
 
-fn main() -> Result<()> {
+fn main() -> avml::Result<()> {
     let cmd: Cmd = argh::from_env();
-
-    Runtime::new()?.block_on(run(cmd))?;
-
+    Runtime::new().map_err(Error::Tokio)?.block_on(run(cmd))?;
     Ok(())
 }
