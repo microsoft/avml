@@ -166,7 +166,7 @@ impl<'a, 'b> Snapshot<'a, 'b> {
         Self { version, ..self }
     }
 
-    fn from_source(&self, src: &Source) -> Result<()> {
+    fn create_source(&self, src: &Source) -> Result<()> {
         match src {
             Source::ProcKcore => self.kcore(),
             Source::DevCrash => self.phys(Path::new("/dev/crash")),
@@ -179,26 +179,26 @@ impl<'a, 'b> Snapshot<'a, 'b> {
     /// Create a memory snapshot
     pub fn create(&self) -> Result<()> {
         if let Some(src) = self.source {
-            self.from_source(src)?;
+            self.create_source(src)?;
         } else if self.destination == Path::new("/dev/stdout") {
             // If we're writing to stdout, we can't start over if reading from a
             // source fails.  As such, we need to do more work to pick a source
             // rather than just trying all available options.
             if is_kcore_ok() {
-                self.from_source(&Source::ProcKcore)?;
+                self.create_source(&Source::ProcKcore)?;
             } else if can_open(Path::new("/dev/crash")) {
-                self.from_source(&Source::DevCrash)?;
+                self.create_source(&Source::DevCrash)?;
             } else if can_open(Path::new("/dev/mem")) {
-                self.from_source(&Source::DevMem)?;
+                self.create_source(&Source::DevMem)?;
             } else {
                 return Err(Error::UnableToCreateSnapshot(
                     "no source available".to_string(),
                 ));
             }
         } else {
-            let crash_err = try_method!(self.from_source(&Source::DevCrash));
-            let kcore_err = try_method!(self.from_source(&Source::ProcKcore));
-            let devmem_err = try_method!(self.from_source(&Source::DevMem));
+            let crash_err = try_method!(self.create_source(&Source::DevCrash));
+            let kcore_err = try_method!(self.create_source(&Source::ProcKcore));
+            let devmem_err = try_method!(self.create_source(&Source::DevMem));
 
             let reason = vec!["".to_string(), crash_err, kcore_err, devmem_err].join("\n");
 
