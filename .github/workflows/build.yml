@@ -1,0 +1,29 @@
+name: build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: build
+      run: eng/build.sh
+    - name: Run tests
+      run: sudo target/x86_64-unknown-linux-musl/release/avml --compress output.lime
+    - name: upload artifacts
+      uses: actions/upload-artifact@v2.3.1
+      with:
+        name: build-artifacts
+        path: |
+          target/*/release/avml
+          target/*/release/avml-minimal
+          target/*/release/avml-convert
+          target/*/release/avml-upload
