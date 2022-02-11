@@ -389,13 +389,13 @@ mod tests {
         let url = &reqwest::Url::parse(
             "https://myaccount.blob.core.windows.net/mycontainer/myblob?sas=data&here=1",
         )
-        .unwrap();
+        .map_err(|_| Error::InvalidSasToken("unable to parse url"))?;
         let _token: SasToken = url.try_into()?;
 
         let url = &reqwest::Url::parse(
             "https://myaccount.blob.core.windows.net/mycontainer?sas=data&here=1",
         )
-        .unwrap();
+        .map_err(|_| Error::InvalidSasToken("unable to parse url"))?;
         let result: Result<SasToken> = url.try_into();
         assert!(result.is_err());
 
