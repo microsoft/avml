@@ -21,3 +21,4 @@ credativ:Debian:9:latest
 Debian:debian-10:10:latest
 Debian:debian-11:11:latest
 MicrosoftCBLMariner:cbl-mariner:cbl-mariner-1:latest
+MicrosoftCBLMariner:cbl-mariner:cbl-mariner-2:latest

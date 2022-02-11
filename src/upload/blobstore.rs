@@ -108,6 +108,11 @@ impl TryFrom<&Url> for SasToken {
         v.remove(0);
         let container = v.remove(0).to_string();
         let path = v.join("/");
+
+        if path.is_empty() {
+            return Err(Error::InvalidSasToken("missing blob name"));
+        }
+
         Ok(Self {
             account,
             container,
@@ -378,6 +383,24 @@ mod tests {
 
     const ONE_GB: usize = ONE_MB * 1024;
     const ONE_TB: usize = ONE_GB * 1024;
+
+    #[test]
+    fn test_parse_sas_url() -> Result<()> {
+        let url = &reqwest::Url::parse(
+            "https://myaccount.blob.core.windows.net/mycontainer/myblob?sas=data&here=1",
+        )
+        .unwrap();
+        let _token: SasToken = url.try_into()?;
+
+        let url = &reqwest::Url::parse(
+            "https://myaccount.blob.core.windows.net/mycontainer?sas=data&here=1",
+        )
+        .unwrap();
+        let result: Result<SasToken> = url.try_into();
+        assert!(result.is_err());
+
+        Ok(())
+    }
 
     #[test]
     fn test_calc_concurrency() -> Result<()> {
