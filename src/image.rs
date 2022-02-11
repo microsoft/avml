@@ -9,9 +9,11 @@ use std::{
     fs::{File, OpenOptions},
     io::{prelude::*, Cursor, Seek, SeekFrom},
     ops::Range,
-    os::unix::fs::OpenOptionsExt,
     path::Path,
 };
+
+#[cfg(target_family = "unix")]
+use std::os::unix::fs::OpenOptionsExt;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -255,18 +257,34 @@ pub struct Image {
 }
 
 impl Image {
+    #[cfg(target_family = "windows")]
+    fn open_dst(path: &Path) -> Result<File> {
+        OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(path)
+            .map_err(Error::Write)
+    }
+
+    #[cfg(target_family = "unix")]
+    fn open_dst(path: &Path) -> Result<File> {
+        OpenOptions::new()
+            .mode(0o600)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(path)
+            .map_err(Error::Write)
+    }
+
     pub fn new(version: u32, src_filename: &Path, dst_filename: &Path) -> Result<Self> {
         let src = OpenOptions::new()
             .read(true)
             .open(src_filename)
             .map_err(Error::Read)?;
-        let dst = OpenOptions::new()
-            .mode(0o600)
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(dst_filename)
-            .map_err(Error::Write)?;
+
+        let dst = Self::open_dst(dst_filename)?;
 
         Ok(Self { version, src, dst })
     }

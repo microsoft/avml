@@ -29,3 +29,26 @@ jobs:
           target/*/release/avml-minimal
           target/*/release/avml-convert
           target/*/release/avml-upload
+  windows:
+    runs-on: windows-latest
+    steps:
+    - name: Set git to use LF
+      run: |
+        git config --global core.autocrlf false
+        git config --global core.eol lf
+    - uses: actions/checkout@v2
+    - name: build avml-convert
+      run: cargo build --release --bin avml-convert --locked
+    - name: build avml-upload
+      run: cargo build --release --bin avml-upload --locked
+    - name: Run tests
+      run: cargo test
+    - name: upload artifacts
+      uses: actions/upload-artifact@v2.3.1
+      with:
+        name: windows-artifacts
+        path: |
+          target/release/avml-convert.exe
+          target/release/avml_convert.pdb
+          target/release/avml-upload.exe
+          target/release/avml_upload.pdb
