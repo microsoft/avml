@@ -22,10 +22,8 @@ pub fn parse() -> Result<Vec<Range<u64>>, Error> {
 
 fn parse_file(path: &Path) -> Result<Vec<Range<u64>>, Error> {
     let mut f = OpenOptions::new().read(true).open(path)?;
-    // .with_context(|| format!("unable to open file: {}", path.display()))?;
     let mut buffer = String::new();
     f.read_to_string(&mut buffer)?;
-    // .with_context(|| format!("unable to read file: {}", path.display()))?;
 
     let mut ranges = Vec::new();
     for line in buffer.split_terminator('\n') {
