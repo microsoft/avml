@@ -32,6 +32,10 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
+    - name: Set git to use LF
+      run: |
+        git config --global core.autocrlf false
+        git config --global core.eol lf
     - uses: actions/checkout@v2
     - name: build avml-convert
       run: cargo build --release --bin avml-convert
