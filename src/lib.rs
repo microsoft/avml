@@ -80,7 +80,7 @@ impl std::fmt::Debug for Error {
 pub(crate) fn indent<T: AsRef<str>>(data: T, indent: usize) -> String {
     data.as_ref()
         .split('\n')
-        .map(|line| format!("{:indent$}{}", "", line, indent = indent)) // format!("    {:1$}", line, spaces))
+        .map(|line| format!("{:indent$}{}", "", line, indent = indent))
         .collect::<Vec<_>>()
         .join("\n")
 }
