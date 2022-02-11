@@ -29,7 +29,7 @@ jobs:
           target/*/release/avml-minimal
           target/*/release/avml-convert
           target/*/release/avml-upload
-  build:
+  windows:
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v2
