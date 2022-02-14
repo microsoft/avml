@@ -3,12 +3,13 @@
 
 use crate::ONE_MB;
 use async_channel::{bounded, Receiver, Sender};
-use azure_core::new_http_client;
+use azure_core::{new_http_client, HttpError};
 use azure_storage::core::prelude::*;
 use azure_storage_blobs::prelude::*;
 use backoff::{future::retry, ExponentialBackoff};
 use bytes::Bytes;
 use futures::future::try_join_all;
+use http::StatusCode;
 use std::{cmp, convert::TryFrom, marker::Unpin, path::Path, sync::Arc};
 use tokio::{
     fs::File,
@@ -24,14 +25,8 @@ pub enum Error {
     #[error("unable to queue block for upload")]
     QueueBlock(#[from] async_channel::SendError<UploadBlock>),
 
-    #[error("upload block failed after retrying: {0}")]
-    Retry(#[source] Box<dyn std::error::Error + Sync + Send>),
-
-    #[error("upload block failed: {0}")]
-    UploadBlock(#[source] Box<dyn std::error::Error + Sync + Send>),
-
-    #[error("finalizing block uploads failed after retrying: {0}")]
-    Finalize(#[source] Box<dyn std::error::Error + Sync + Send>),
+    #[error("upload failed: {0}")]
+    UploadFailed(#[source] Box<dyn std::error::Error + Sync + Send>),
 
     #[error("uploading blocks failed")]
     UploadFromQueue(#[source] tokio::task::JoinError),
@@ -84,6 +79,20 @@ struct SasToken {
     container: String,
     path: String,
     token: String,
+}
+
+fn check_transient(err: Box<dyn std::error::Error + Sync + Send>) -> backoff::Error<Error> {
+    if let Some(HttpError::StatusCode { status, .. }) = &err.downcast_ref::<HttpError>() {
+        // 3xx, 5xx, and 429 are all transient errors.  All other HTTP errors are permanent.
+        if !(status.is_redirection()
+            || status.is_server_error()
+            || status == &StatusCode::TOO_MANY_REQUESTS)
+        {
+            return backoff::Error::permanent(Error::UploadFailed(err));
+        }
+    }
+    eprintln!("transient error: {}", err);
+    backoff::Error::transient(Error::UploadFailed(err))
 }
 
 impl TryFrom<&Url> for SasToken {
@@ -274,11 +283,13 @@ impl BlobUploader {
         let block_list = BlockList { blocks };
 
         retry(ExponentialBackoff::default(), || async {
-            let result = self.client.put_block_list(&block_list).execute().await?;
-            Ok(result)
+            self.client
+                .put_block_list(&block_list)
+                .execute()
+                .await
+                .map_err(check_transient)
         })
-        .await
-        .map_err(Error::Finalize)?;
+        .await?;
 
         Ok(())
     }
@@ -303,17 +314,10 @@ impl BlobUploader {
 
     async fn uploaders(&self, count: usize) -> Result<()> {
         let uploaders: Vec<_> = (0..usize::max(1, count))
-            .map(|_| {
-                tokio::spawn(Self::block_uploader(
-                    self.client.clone(),
-                    self.receiver.clone(),
-                ))
-            })
+            .map(|_| Self::block_uploader(self.client.clone(), self.receiver.clone()))
             .collect();
 
-        try_join_all(uploaders)
-            .await
-            .map_err(Error::UploadFromQueue)?;
+        try_join_all(uploaders).await?;
 
         Ok(())
     }
@@ -358,7 +362,8 @@ impl BlobUploader {
         // the channel will respond with an Err to indicate the channel is closed
         while let Ok(upload_chunk) = receiver.recv().await {
             let hash = md5::compute(upload_chunk.data.clone()).into();
-            retry(ExponentialBackoff::default(), || async {
+
+            let result = retry(ExponentialBackoff::default(), || async {
                 let data_for_req = upload_chunk.data.clone();
                 let block_id_for_req = upload_chunk.id.clone();
 
@@ -367,10 +372,15 @@ impl BlobUploader {
                     .hash(&hash)
                     .execute()
                     .await
-                    .map_err(Error::UploadBlock)
-                    .map_err(backoff::Error::transient)
+                    .map_err(check_transient)
             })
-            .await?;
+            .await;
+
+            // as soon as any error is seen (after retrying), bail out and stop other uploaders
+            if result.is_err() {
+                receiver.close();
+                result?;
+            }
         }
 
         Ok(())
