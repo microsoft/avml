@@ -79,6 +79,7 @@ dependencies = [
  "bytes",
  "elf",
  "futures",
+ "http",
  "md5",
  "reqwest",
  "snap",
