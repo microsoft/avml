@@ -26,7 +26,7 @@ snap = "1.0"
 futures = "0.3"
 url = { version = "2.2", optional = true }
 tokio-util = { version = "0.7", features = ["codec"] , optional = true }
-tokio = { version = "1.16", default-features = false, optional = true, features = ["fs"] }
+tokio = { version = "1.17", default-features = false, optional = true, features = ["fs"] }
 reqwest = { version = "0.11", default-features = false, features = ["rustls-tls"], optional = true}
 thiserror = "1.0"
 md5 = "0.7"
