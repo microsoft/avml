@@ -1,54 +1,54 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-use argh::FromArgs;
 #[cfg(any(feature = "blobstore", feature = "put"))]
 use avml::Error;
 use avml::{iomem, Result, Snapshot, Source};
+use clap::Parser;
 use std::path::PathBuf;
 #[cfg(any(feature = "blobstore", feature = "put"))]
 use tokio::{fs::remove_file, runtime::Runtime};
 #[cfg(any(feature = "blobstore", feature = "put"))]
 use url::Url;
 
-#[derive(FromArgs)]
+#[derive(Parser)]
 /// A portable volatile memory acquisition tool for Linux
+#[clap(version)]
 struct Config {
     /// compress via snappy
-    #[argh(switch)]
+    #[clap(long)]
     compress: bool,
 
-    /// specify input source [possible values: /proc/kcore, /dev/crash, /dev/mem]
-    #[argh(option)]
+    /// specify input source
+    #[clap(long, arg_enum)]
     source: Option<Source>,
 
     /// upload via HTTP PUT upon acquisition
     #[cfg(feature = "put")]
-    #[argh(option)]
+    #[clap(long)]
     url: Option<Url>,
 
     /// delete upon successful upload
     #[cfg(any(feature = "blobstore", feature = "put"))]
-    #[argh(switch)]
+    #[clap(long)]
     delete: bool,
 
     /// upload via Azure Blob Store upon acquisition
     #[cfg(feature = "blobstore")]
-    #[argh(option)]
+    #[clap(long)]
     sas_url: Option<Url>,
 
     /// specify maximum block size in MiB
     #[cfg(feature = "blobstore")]
-    #[argh(option)]
+    #[clap(long)]
     sas_block_size: Option<usize>,
 
     /// specify blob upload concurrency
     #[cfg(feature = "blobstore")]
-    #[argh(option)]
+    #[clap(long)]
     sas_block_concurrency: Option<usize>,
 
     /// name of the file to write to on local system
-    #[argh(positional)]
     filename: PathBuf,
 }
 
@@ -85,7 +85,7 @@ async fn upload(config: &Config) -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    let config: Config = argh::from_env();
+    let config = Config::parse();
 
     let version = if config.compress { 2 } else { 1 };
 
