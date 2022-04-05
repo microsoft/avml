@@ -118,6 +118,7 @@ fn convert_from_raw(src: &Path, dst: &Path, compress: bool) -> Result<()> {
 
 #[derive(Parser)]
 /// AVML compress/decompress tool
+#[clap(version)]
 struct Config {
     /// specify output format [possible values: raw, lime, lime_compressed.  Default: lime_compressed]
     #[clap(long, arg_enum, default_value_t = Format::LimeCompressed)]
