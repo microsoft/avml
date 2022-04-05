@@ -41,7 +41,7 @@ name = "avml"
 version = "0.6.1"
 dependencies = [
  "async-channel",
- "azure_core",
+ "azure_core 0.2.1",
  "azure_storage",
  "azure_storage_blobs",
  "backoff",
@@ -88,6 +88,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "azure_core"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2a5efd9941cec94c61bf0dd28b9e4827ccd0d1ea4103bec9c10219ab6190052e"
+dependencies = [
+ "async-trait",
+ "base64",
+ "bytes",
+ "chrono",
+ "dyn-clone",
+ "futures",
+ "getrandom",
+ "http",
+ "log",
+ "oauth2",
+ "pin-project",
+ "rand",
+ "reqwest",
+ "rustc_version",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "thiserror",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "azure_storage"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -95,7 +123,7 @@ checksum = "22c413e8459badf86c9e6e0c84f5894609663bcc8fa5eb1e49bfb985273dac58"
 dependencies = [
  "RustyXML",
  "async-trait",
- "azure_core",
+ "azure_core 0.1.1",
  "base64",
  "bytes",
  "chrono",
@@ -120,7 +148,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a70ec6fab8a2cae5d774098267870c0f3fbef1cb63cac12afab38b8c17cc8d97"
 dependencies = [
  "RustyXML",
- "azure_core",
+ "azure_core 0.1.1",
  "azure_storage",
  "base64",
  "bytes",
@@ -754,6 +782,26 @@ name = "percent-encoding"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4fd5641d01c8f18a23da7b6fe29298ff4b55afcccdf78973b24cf3175fee32e"
+
+[[package]]
+name = "pin-project"
+version = "1.0.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "58ad3879ad3baf4e44784bc6a718a8698867bb991f8ce24d1bcbe2cfb4c3a75e"
+dependencies = [
+ "pin-project-internal",
+]
+
+[[package]]
+name = "pin-project-internal"
+version = "1.0.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "744b6f092ba29c3650faf274db506afd39944f48420f6c86b17cfe0ee1cb36bb"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "pin-project-lite"
