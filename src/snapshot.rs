@@ -5,18 +5,15 @@ use crate::{
     format_error,
     image::{Block, Image},
 };
+use clap::ArgEnum;
 use std::{
     fs::{metadata, OpenOptions},
     ops::Range,
     path::{Path, PathBuf},
-    str::FromStr,
 };
 
 #[derive(thiserror::Error)]
 pub enum Error {
-    #[error("unsupported memory source: {0}")]
-    UnsupportedMemorySource(String),
-
     #[error("unable to parse elf structures")]
     Elf(elf::ParseError),
 
@@ -44,7 +41,7 @@ impl std::fmt::Debug for Error {
 
 type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, ArgEnum)]
 pub enum Source {
     ///  `/dev/crash` provides a read-only view of physical memory.  Access to
     ///  memory using this device must be paged aligned and read one page at a
@@ -54,6 +51,7 @@ pub enum Source {
     /// default.  A loadable kernel module version is available as part of
     /// the Linux utility `crash`:
     /// <https://github.com/crash-utility/crash/tree/master/memory_driver>
+    #[clap(name = "/dev/crash")]
     DevCrash,
 
     ///  `/dev/mem` provides a read-write view of physical memory, though AVML
@@ -63,6 +61,7 @@ pub enum Source {
     ///
     /// With `CONFIG_STRICT_DEVMEM`, only the first 1MB of memory can be
     /// accessed.
+    #[clap(name = "/dev/mem")]
     DevMem,
 
     ///  `/proc/kcore` provides a virtual ELF coredump of kernel memory.  This can
@@ -71,9 +70,11 @@ pub enum Source {
     /// If LOCKDOWN_KCORE is set in the kernel, then /proc/kcore may exist but
     /// is either inaccessible or doesn't allow access to all of the kernel
     /// memory.
+    #[clap(name = "/proc/kcore")]
     ProcKcore,
 
     /// User-specified path to a raw memory file
+    #[clap(skip)]
     Raw(PathBuf),
 }
 
@@ -85,21 +86,6 @@ impl std::fmt::Display for Source {
             Source::ProcKcore => write!(f, "/proc/kcore"),
             Source::Raw(path) => write!(f, "{}", path.display()),
         }
-    }
-}
-
-impl FromStr for Source {
-    type Err = Error;
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        let x = match s {
-            "/dev/crash" => Self::DevCrash,
-            "/dev/mem" => Self::DevMem,
-            "/proc/kcore" => Self::ProcKcore,
-            // Source::Raw isn't listed here, as FromStr is intended to be used
-            // by the base CLI, where we don't want arbitrary file sources.
-            _ => return Err(Error::UnsupportedMemorySource(s.to_string())),
-        };
-        Ok(x)
     }
 }
 

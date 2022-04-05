@@ -93,26 +93,45 @@ avml-convert ./compressed.lime ./uncompressed.lime
 
 ## To compress an uncompressed LiME image
 ```
-avml-convert --source_format lime --format lime_compressed ./uncompressed.lime ./compressed.lime
+avml-convert --source-format lime --format lime_compressed ./uncompressed.lime ./compressed.lime
 ```
 
 # Usage
 
 ```
-Usage: avml <filename> [--compress] [--source <source>] [--url <url>] [--delete] [--sas-url <sas-url>] [--sas-block-size <sas-block-size>]
+USAGE:
+    avml [OPTIONS] <FILENAME>
 
-A portable volatile memory acquisition tool for Linux
+ARGS:
+    <FILENAME>    name of the file to write to on local system
 
-Options:
-  --compress        compress via snappy
-  --source          specify input source [possible values: /proc/kcore,
-                    /dev/crash, /dev/mem]
-  --url             upload via HTTP PUT upon acquisition
-  --delete          delete upon successful upload
-  --sas-url         upload via Azure Blob Store upon acquisition
-  --sas-block-size  specify maximum block size in MiB
-  --help            display usage information
+OPTIONS:
+        --compress
+            compress via snappy
 
+        --delete
+            delete upon successful upload
+
+    -h, --help
+            Print help information
+
+        --sas-block-concurrency <SAS_BLOCK_CONCURRENCY>
+            specify blob upload concurrency
+
+        --sas-block-size <SAS_BLOCK_SIZE>
+            specify maximum block size in MiB
+
+        --sas-url <SAS_URL>
+            upload via Azure Blob Store upon acquisition
+
+        --source <SOURCE>
+            specify input source [possible values: /dev/crash, /dev/mem, /proc/kcore]
+
+        --url <URL>
+            upload via HTTP PUT upon acquisition
+
+    -V, --version
+            Print version information
 ```
 
 # Building on Ubuntu

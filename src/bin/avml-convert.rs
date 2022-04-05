@@ -1,16 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-use argh::FromArgs;
 use avml::{image, iomem::split_ranges, Error, Result, Snapshot, Source, ONE_MB};
+use clap::{ArgEnum, Parser};
 use snap::read::FrameDecoder;
 use std::{
     convert::TryFrom,
     fs::metadata,
-    io::prelude::*,
-    io::SeekFrom,
+    io::{prelude::*, SeekFrom},
     path::{Path, PathBuf},
-    str::FromStr,
 };
 
 fn convert(src: &Path, dst: &Path, compress: bool) -> Result<()> {
@@ -118,47 +116,34 @@ fn convert_from_raw(src: &Path, dst: &Path, compress: bool) -> Result<()> {
     Ok(())
 }
 
-#[derive(FromArgs)]
+#[derive(Parser)]
 /// AVML compress/decompress tool
 struct Config {
     /// specify output format [possible values: raw, lime, lime_compressed.  Default: lime_compressed]
-    #[argh(option, default = "Format::LimeCompressed")]
+    #[clap(long, arg_enum, default_value_t = Format::LimeCompressed)]
     source_format: Format,
 
-    /// specify output format [possible values: raw, lime, lime_compressed.  Default: lime]
-    #[argh(option, default = "Format::Lime")]
+    /// specify output format
+    #[clap(long, arg_enum, default_value_t = Format::Lime)]
     format: Format,
 
     /// name of the source file to read to on local system
-    #[argh(positional)]
     src: PathBuf,
 
     /// name of the destination file to write to on local system
-    #[argh(positional)]
     dst: PathBuf,
 }
 
+#[derive(ArgEnum, Clone)]
 enum Format {
     Raw,
     Lime,
+    #[clap(rename_all = "snake_case")]
     LimeCompressed,
 }
 
-impl FromStr for Format {
-    type Err = image::Error;
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        let x = match s {
-            "raw" => Self::Raw,
-            "lime" => Self::Lime,
-            "lime_compressed" => Self::LimeCompressed,
-            _ => return Err(image::Error::UnsupportedFormat),
-        };
-        Ok(x)
-    }
-}
-
 fn main() -> Result<()> {
-    let config: Config = argh::from_env();
+    let config = Config::parse();
 
     match (config.source_format, config.format) {
         (Format::Lime | Format::LimeCompressed, Format::Raw) => {
