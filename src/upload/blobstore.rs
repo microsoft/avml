@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-use crate::ONE_MB;
+use crate::{upload::status::Status, ONE_MB};
 use async_channel::{bounded, Receiver, Sender};
 use azure_core::{new_http_client, HttpError};
 use azure_storage::core::prelude::*;
@@ -313,8 +313,12 @@ impl BlobUploader {
     }
 
     async fn uploaders(&self, count: usize) -> Result<()> {
+        let status = Status::new(self.size);
+
         let uploaders: Vec<_> = (0..usize::max(1, count))
-            .map(|_| Self::block_uploader(self.client.clone(), self.receiver.clone()))
+            .map(|_| {
+                Self::block_uploader(self.client.clone(), self.receiver.clone(), status.clone())
+            })
             .collect();
 
         try_join_all(uploaders).await?;
@@ -358,6 +362,7 @@ impl BlobUploader {
     async fn block_uploader(
         client: Arc<BlobClient>,
         receiver: Receiver<UploadBlock>,
+        status: Status,
     ) -> Result<()> {
         // the channel will respond with an Err to indicate the channel is closed
         while let Ok(upload_chunk) = receiver.recv().await {
@@ -375,6 +380,8 @@ impl BlobUploader {
                     .map_err(check_transient)
             })
             .await;
+
+            status.inc(upload_chunk.data.len());
 
             // as soon as any error is seen (after retrying), bail out and stop other uploaders
             if result.is_err() {
