@@ -34,7 +34,7 @@ pub async fn put(filename: &Path, url: &Url) -> Result<(), Error> {
         .map_err(|e| Error::Io(e, filename.to_owned()))?
         .len();
 
-    let status = Status::new(Some(size as usize));
+    let status = Status::new(Some(size));
 
     let stream = FramedRead::new(file, BytesCodec::new()).inspect(move |x| {
         if let Ok(x) = x {

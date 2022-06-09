@@ -1,16 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#[cfg(feature = "status")]
+#[cfg(all(feature = "status", any(feature = "blobstore", feature = "put")))]
 #[derive(Clone)]
 pub struct Status {
     bar: Option<indicatif::ProgressBar>,
-    total: Option<usize>,
+    total: Option<u64>,
 }
 
-#[cfg(feature = "status")]
+#[cfg(all(feature = "status", any(feature = "blobstore", feature = "put")))]
 impl Status {
-    pub fn new(total: Option<usize>) -> Self {
+    pub fn new(total: Option<u64>) -> Self {
         let size = total.unwrap_or(0) as u64;
         let bar = if atty::is(atty::Stream::Stdin) {
             Some(
@@ -36,14 +36,15 @@ impl Status {
     }
 }
 
-#[cfg(not(feature = "status"))]
+#[cfg(all(not(feature = "status"), any(feature = "blobstore", feature = "put")))]
 #[derive(Clone)]
 pub struct Status {}
 
-#[cfg(not(feature = "status"))]
+#[cfg(all(not(feature = "status"), any(feature = "blobstore", feature = "put")))]
 impl Status {
-    pub fn new(_total: Option<usize>) -> Self {
+    pub fn new(_total: Option<u64>) -> Self {
         Self {}
     }
+    #[allow(clippy::unused_self)]
     pub fn inc(&self, _n: usize) {}
 }

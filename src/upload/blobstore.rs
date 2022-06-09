@@ -313,7 +313,7 @@ impl BlobUploader {
     }
 
     async fn uploaders(&self, count: usize) -> Result<()> {
-        let status = Status::new(self.size);
+        let status = Status::new(self.size.map(|x| x as u64));
 
         let uploaders: Vec<_> = (0..usize::max(1, count))
             .map(|_| {
