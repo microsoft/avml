@@ -20,7 +20,7 @@ blobstore = ["url", "azure_core", "azure_storage", "azure_storage_blobs", "tokio
 bytes = "1.1"
 elf = "0.0.10"
 byteorder = "1.3"
-clap = { version = "3.1", default-features = false, features=["derive", "std"] }
+clap = { version = "3.2", default-features = false, features=["derive", "std"] }
 http = "0.2"
 snap = "1.0"
 futures = "0.3"
