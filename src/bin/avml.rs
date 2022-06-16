@@ -16,39 +16,40 @@ use url::Url;
 #[clap(version)]
 struct Config {
     /// compress via snappy
-    #[clap(long)]
+    #[clap(long, value_parser)]
     compress: bool,
 
     /// specify input source
-    #[clap(long, arg_enum)]
+    #[clap(long, arg_enum, value_parser)]
     source: Option<Source>,
 
     /// upload via HTTP PUT upon acquisition
     #[cfg(feature = "put")]
-    #[clap(long)]
+    #[clap(long, value_parser)]
     url: Option<Url>,
 
     /// delete upon successful upload
     #[cfg(any(feature = "blobstore", feature = "put"))]
-    #[clap(long)]
+    #[clap(long, value_parser)]
     delete: bool,
 
     /// upload via Azure Blob Store upon acquisition
     #[cfg(feature = "blobstore")]
-    #[clap(long)]
+    #[clap(long, value_parser)]
     sas_url: Option<Url>,
 
     /// specify maximum block size in MiB
     #[cfg(feature = "blobstore")]
-    #[clap(long)]
+    #[clap(long, value_parser)]
     sas_block_size: Option<usize>,
 
     /// specify blob upload concurrency
     #[cfg(feature = "blobstore")]
-    #[clap(long)]
+    #[clap(long, value_parser)]
     sas_block_concurrency: Option<usize>,
 
     /// name of the file to write to on local system
+    #[clap(value_parser)]
     filename: PathBuf,
 }
 

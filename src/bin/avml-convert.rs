@@ -121,17 +121,19 @@ fn convert_from_raw(src: &Path, dst: &Path, compress: bool) -> Result<()> {
 #[clap(version)]
 struct Config {
     /// specify output format [possible values: raw, lime, lime_compressed.  Default: lime_compressed]
-    #[clap(long, arg_enum, default_value_t = Format::LimeCompressed)]
+    #[clap(long, arg_enum, default_value_t = Format::LimeCompressed, value_parser)]
     source_format: Format,
 
     /// specify output format
-    #[clap(long, arg_enum, default_value_t = Format::Lime)]
+    #[clap(long, arg_enum, default_value_t = Format::Lime, value_parser)]
     format: Format,
 
     /// name of the source file to read to on local system
+    #[clap(value_parser)]
     src: PathBuf,
 
     /// name of the destination file to write to on local system
+    #[clap(value_parser)]
     dst: PathBuf,
 }
 
