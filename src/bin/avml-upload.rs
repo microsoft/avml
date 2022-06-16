@@ -18,24 +18,28 @@ struct Cmd {
 enum SubCommands {
     Put {
         /// name of the file to upload on the local system
+        #[clap(value_parser)]
         filename: PathBuf,
 
         // url to upload via HTTP PUT
+        #[clap(value_parser)]
         url: Url,
     },
     UploadBlob {
         /// name of the file to upload on the local system
+        #[clap(value_parser)]
         filename: PathBuf,
 
         // url to upload via Azure Blob Storage
+        #[clap(value_parser)]
         url: Url,
 
         /// specify blob upload concurrency
-        #[clap(long)]
+        #[clap(long, value_parser)]
         sas_block_concurrency: Option<usize>,
 
         /// specify maximum block size in MiB
-        #[clap(long)]
+        #[clap(long, value_parser)]
         sas_block_size: Option<usize>,
     },
 }
