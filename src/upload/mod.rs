@@ -6,3 +6,5 @@ pub mod blobstore;
 
 #[cfg(feature = "put")]
 pub mod http;
+
+mod status;

@@ -20,9 +20,6 @@ pub enum Error {
     #[error("locked down /proc/kcore")]
     LockedDownKcore,
 
-    #[error("unable to find memory range: {0:?}")]
-    UnableToFindMemoryRange(Range<u64>),
-
     #[error("unable to create memory snapshot")]
     UnableToCreateMemorySnapshot(#[from] crate::image::Error),
 
@@ -194,6 +191,50 @@ impl<'a, 'b> Snapshot<'a, 'b> {
         Ok(())
     }
 
+    // given a set of ranges from iomem and a set of Blocks derived from the
+    // psuedo-elf phys section headers, derive a set of ranges that can be used
+    // to create a snapshot.
+    fn find_kcore_blocks(ranges: &[Range<u64>], headers: &[Block]) -> Vec<Block> {
+        let mut result = vec![];
+
+        'outer: for range in ranges {
+            let mut range = range.clone();
+
+            'inner: for header in headers {
+                match (
+                    header.range.contains(&range.start),
+                    // TODO: ranges is currently inclusive, but not a
+                    // RangeInclusive.  this should be adjusted.
+                    header.range.contains(&(range.end - 1)),
+                ) {
+                    (true, true) => {
+                        let block = Block {
+                            offset: header.offset + range.start - header.range.start,
+                            range: range.clone(),
+                        };
+
+                        result.push(block);
+                        continue 'outer;
+                    }
+                    (true, false) => {
+                        let block = Block {
+                            offset: header.offset + range.start - header.range.start,
+                            range: range.start..header.range.end,
+                        };
+
+                        result.push(block);
+                        range.start = header.range.end;
+                    }
+                    _ => {
+                        continue 'inner;
+                    }
+                };
+            }
+        }
+
+        result
+    }
+
     fn kcore(&self) -> Result<()> {
         if !is_kcore_ok() {
             return Err(Error::LockedDownKcore);
@@ -206,21 +247,19 @@ impl<'a, 'b> Snapshot<'a, 'b> {
         file.phdrs.sort_by(|a, b| a.vaddr.cmp(&b.vaddr));
         let start = file.phdrs[0].vaddr - self.memory_ranges[0].start;
 
-        let mut blocks = vec![];
-        'outer: for range in &self.memory_ranges {
-            for phdr in &file.phdrs {
-                if range.start == phdr.vaddr - start {
-                    let size = u64::min(phdr.memsz, range.end - range.start);
-                    blocks.push(Block {
-                        offset: phdr.offset,
-                        range: range.start..range.start + size,
-                    });
-                    continue 'outer;
-                }
-            }
-            return Err(Error::UnableToFindMemoryRange(range.clone()));
+        let mut physical_ranges = vec![];
+
+        for phdr in file.phdrs {
+            let entry_start = phdr.vaddr - start;
+            let entry_end = entry_start + phdr.memsz;
+
+            physical_ranges.push(Block {
+                range: entry_start..entry_end,
+                offset: phdr.offset,
+            });
         }
 
+        let blocks = Self::find_kcore_blocks(&self.memory_ranges, &physical_ranges);
         image.write_blocks(&blocks)?;
         Ok(())
     }
@@ -245,5 +284,57 @@ impl<'a, 'b> Snapshot<'a, 'b> {
         image.write_blocks(&blocks)?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn translate_ranges() {
+        let ranges = [10..20, 30..35, 45..55];
+
+        let core_ranges = [
+            Block {
+                range: 10..20,
+                offset: 0,
+            },
+            Block {
+                range: 25..35,
+                offset: 10,
+            },
+            Block {
+                range: 40..50,
+                offset: 20,
+            },
+            Block {
+                range: 50..55,
+                offset: 35,
+            },
+        ];
+
+        let expected = vec![
+            Block {
+                offset: 0,
+                range: 10..20,
+            },
+            Block {
+                offset: 10 + 5,
+                range: 30..35,
+            },
+            Block {
+                offset: 25,
+                range: 45..50,
+            },
+            Block {
+                offset: 35,
+                range: 50..55,
+            },
+        ];
+
+        let result = Snapshot::find_kcore_blocks(&ranges, &core_ranges);
+
+        assert_eq!(result, expected);
     }
 }

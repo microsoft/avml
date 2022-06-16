@@ -58,6 +58,7 @@ pub struct Header {
     pub version: u32,
 }
 
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Block {
     pub offset: u64,
     pub range: Range<u64>,
