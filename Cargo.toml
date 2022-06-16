@@ -33,7 +33,7 @@ thiserror = "1.0"
 md5 = "0.7"
 backoff = { version = "0.4", features = ["tokio"], optional = true}
 azure_storage = { version = "0.2", default-features = false, features = ["enable_reqwest_rustls", "account"], optional = true }
-azure_storage_blobs = { version = "0.2", default-features = false, features = ["enable_reqwest_rustls"], optional = true }
+azure_storage_blobs = { version = "0.3", default-features = false, features = ["enable_reqwest_rustls"], optional = true }
 azure_core = { version = "0.2", default-features= false, features = ["enable_reqwest_rustls"], optional = true }
 async-channel = {version="1.6", optional=true}
 atty = { version = "0.2", optional=true }

@@ -53,8 +53,8 @@ version = "0.6.1"
 dependencies = [
  "async-channel",
  "atty",
- "azure_core",
- "azure_storage",
+ "azure_core 0.2.2",
+ "azure_storage 0.2.0",
  "azure_storage_blobs",
  "backoff",
  "byteorder 1.4.3",
@@ -102,6 +102,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "azure_core"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0e2c7582699a3af9cc8a7bc81259519d8afb8eded1090d4fcd86de3db0eace1"
+dependencies = [
+ "async-trait",
+ "base64",
+ "bytes",
+ "chrono",
+ "dyn-clone",
+ "futures",
+ "getrandom",
+ "http",
+ "log",
+ "oauth2",
+ "pin-project",
+ "rand",
+ "reqwest",
+ "rustc_version",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "azure_storage"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -109,7 +136,7 @@ checksum = "7a9f2aee687da9817f7b332e1e01dda51cd9f7a0a68a5abcfec7c4c494a65546"
 dependencies = [
  "RustyXML",
  "async-trait",
- "azure_core",
+ "azure_core 0.2.2",
  "base64",
  "bytes",
  "chrono",
@@ -129,14 +156,40 @@ dependencies = [
 ]
 
 [[package]]
-name = "azure_storage_blobs"
-version = "0.2.0"
+name = "azure_storage"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d17982127c4a34736a60656ddbd05b1714420686b6e6304145ee3b4501395e75"
+checksum = "d21c9efa0126aefcdf620395b262143e86aa95002df3c3030a471ed9f5c4dad4"
 dependencies = [
  "RustyXML",
- "azure_core",
- "azure_storage",
+ "async-trait",
+ "azure_core 0.3.0",
+ "base64",
+ "bytes",
+ "chrono",
+ "futures",
+ "hmac",
+ "http",
+ "log",
+ "once_cell",
+ "serde",
+ "serde-xml-rs",
+ "serde_derive",
+ "serde_json",
+ "sha2",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "azure_storage_blobs"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "47f61c2e25e51058f4ff5a9298620e4b8534326a9f2d2936b6aca5c0ac76aaca"
+dependencies = [
+ "RustyXML",
+ "azure_core 0.3.0",
+ "azure_storage 0.3.0",
  "base64",
  "bytes",
  "chrono",
@@ -148,7 +201,6 @@ dependencies = [
  "serde-xml-rs",
  "serde_derive",
  "serde_json",
- "thiserror",
  "url",
  "uuid",
 ]
