@@ -15,6 +15,7 @@ edition = "2021"
 default = ["put", "blobstore"]
 put = ["reqwest", "url", "tokio"]
 blobstore = ["url", "azure_core", "azure_storage", "azure_storage_blobs", "tokio", "tokio-util", "backoff", "async-channel"]
+status = ["atty", "indicatif"]
 
 [dependencies]
 bytes = "1.1"
@@ -35,6 +36,8 @@ azure_storage = { version = "0.2", default-features = false, features = ["enable
 azure_storage_blobs = { version = "0.2", default-features = false, features = ["enable_reqwest_rustls"], optional = true }
 azure_core = { version = "0.2", default-features= false, features = ["enable_reqwest_rustls"], optional = true }
 async-channel = {version="1.6", optional=true}
+atty = { version = "0.2", optional=true }
+indicatif = { version = "0.16", optional=true }
 
 [profile.release]
 opt-level="z"
