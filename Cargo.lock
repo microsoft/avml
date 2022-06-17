@@ -54,7 +54,7 @@ dependencies = [
  "async-channel",
  "atty",
  "azure_core",
- "azure_storage",
+ "azure_storage 0.3.0",
  "azure_storage_blobs",
  "backoff",
  "byteorder 1.4.3",
@@ -127,14 +127,40 @@ dependencies = [
 ]
 
 [[package]]
-name = "azure_storage_blobs"
-version = "0.3.0"
+name = "azure_storage"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47f61c2e25e51058f4ff5a9298620e4b8534326a9f2d2936b6aca5c0ac76aaca"
+checksum = "d1a5bc29e999268e618c202f157291930d749f1e4de55e01ecfda3990dd37dc7"
+dependencies = [
+ "RustyXML",
+ "async-trait",
+ "azure_core",
+ "base64",
+ "bytes",
+ "chrono",
+ "futures",
+ "hmac",
+ "http",
+ "log",
+ "once_cell",
+ "serde",
+ "serde-xml-rs",
+ "serde_derive",
+ "serde_json",
+ "sha2",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "azure_storage_blobs"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b2baa5f9f6c9e4ee9d096d2e21d21c4a5f120e9a0bbcd3ee7c8abb74b008b631"
 dependencies = [
  "RustyXML",
  "azure_core",
- "azure_storage",
+ "azure_storage 0.4.0",
  "base64",
  "bytes",
  "chrono",
