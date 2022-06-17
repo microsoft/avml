@@ -75,9 +75,9 @@ dependencies = [
 
 [[package]]
 name = "azure_core"
-version = "0.2.2"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca4393afee90ad13c987a2cbfeb5bbb0b9fb3c86585e42ed3ed151babaa93da1"
+checksum = "c0e2c7582699a3af9cc8a7bc81259519d8afb8eded1090d4fcd86de3db0eace1"
 dependencies = [
  "async-trait",
  "base64",
@@ -96,16 +96,15 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
- "thiserror",
  "url",
  "uuid",
 ]
 
 [[package]]
 name = "azure_storage"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a9f2aee687da9817f7b332e1e01dda51cd9f7a0a68a5abcfec7c4c494a65546"
+checksum = "d21c9efa0126aefcdf620395b262143e86aa95002df3c3030a471ed9f5c4dad4"
 dependencies = [
  "RustyXML",
  "async-trait",
@@ -123,16 +122,15 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "sha2",
- "thiserror",
  "url",
  "uuid",
 ]
 
 [[package]]
 name = "azure_storage_blobs"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d17982127c4a34736a60656ddbd05b1714420686b6e6304145ee3b4501395e75"
+checksum = "47f61c2e25e51058f4ff5a9298620e4b8534326a9f2d2936b6aca5c0ac76aaca"
 dependencies = [
  "RustyXML",
  "azure_core",
@@ -148,7 +146,6 @@ dependencies = [
  "serde-xml-rs",
  "serde_derive",
  "serde_json",
- "thiserror",
  "url",
  "uuid",
 ]
@@ -517,9 +514,9 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
-version = "0.11.2"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab5ef0d4909ef3724cc8cce6ccc8572c5c817592e9285f5464f8e86f8bd3726e"
+checksum = "db0d4cf898abf0081f964436dc980e96670a0f36863e4b83aaacdb65c9d7ccc3"
 
 [[package]]
 name = "heck"
@@ -629,9 +626,9 @@ dependencies = [
 
 [[package]]
 name = "indexmap"
-version = "1.8.2"
+version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6012d540c5baa3589337a98ce73408de9b5a25ec9fc2c6fd6be8f0d39e0ca5a"
+checksum = "6c6392766afd7964e2531940894cffe4bd8d7d17dbc3c1c4857040fd4b33bdb3"
 dependencies = [
  "autocfg",
  "hashbrown",
