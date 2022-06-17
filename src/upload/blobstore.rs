@@ -3,7 +3,10 @@
 
 use crate::{upload::status::Status, ONE_MB};
 use async_channel::{bounded, Receiver, Sender};
-use azure_core::{new_http_client, HttpError};
+use azure_core::{
+    error::{Error as AzureError, ErrorKind},
+    new_http_client,
+};
 use azure_storage::core::prelude::*;
 use azure_storage_blobs::prelude::*;
 use backoff::{future::retry, ExponentialBackoff};
@@ -34,11 +37,11 @@ pub enum Error {
     #[error("error reading file")]
     Io(#[from] std::io::Error),
 
+    #[error("error uploading file")]
+    Azure(#[from] AzureError),
+
     #[error("Invalid SAS token: {0}")]
     InvalidSasToken(&'static str),
-
-    #[error("Unable to parse URL: {0}")]
-    UnableToParseToken(#[source] url::ParseError),
 
     #[error("unexpected status code: {status}")]
     UnexpectedStatusCode { status: u16 },
@@ -81,14 +84,24 @@ struct SasToken {
     token: String,
 }
 
+// After the next release of azure_storage_blobs, this should be replaced with
+// azure_core::error::Error, and no longer downcast_ref.
+//
+// ref: https://github.com/Azure/azure-sdk-for-rust/pull/816
 fn check_transient(err: Box<dyn std::error::Error + Sync + Send>) -> backoff::Error<Error> {
-    if let Some(HttpError::StatusCode { status, .. }) = &err.downcast_ref::<HttpError>() {
-        // 3xx, 5xx, and 429 are all transient errors.  All other HTTP errors are permanent.
-        if !(status.is_redirection()
-            || status.is_server_error()
-            || status == &StatusCode::TOO_MANY_REQUESTS)
-        {
-            return backoff::Error::permanent(Error::UploadFailed(err));
+    if let Some(error) = &err.downcast_ref::<AzureError>() {
+        match error.kind() {
+            ErrorKind::HttpResponse { status, .. } => {
+                if let Ok(status) = StatusCode::from_u16(*status) {
+                    if !(status.is_redirection()
+                        || status.is_server_error()
+                        || status == StatusCode::TOO_MANY_REQUESTS)
+                    {
+                        return backoff::Error::permanent(Error::UploadFailed(err));
+                    }
+                }
+            }
+            _ => {}
         }
     }
     eprintln!("transient error: {}", err);
@@ -202,8 +215,7 @@ impl BlobUploader {
 
         let http_client = new_http_client();
         let blob_client =
-            StorageAccountClient::new_sas_token(http_client, &sas.account, &sas.token)
-                .map_err(Error::UnableToParseToken)?
+            StorageAccountClient::new_sas_token(http_client, &sas.account, &sas.token)?
                 .as_storage_client()
                 .as_container_client(sas.container)
                 .as_blob_client(sas.path);
