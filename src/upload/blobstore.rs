@@ -28,9 +28,6 @@ pub enum Error {
     #[error("unable to queue block for upload")]
     QueueBlock(#[from] async_channel::SendError<UploadBlock>),
 
-    #[error("upload failed: {0}")]
-    UploadFailed(#[source] Box<dyn std::error::Error + Sync + Send>),
-
     #[error("uploading blocks failed")]
     UploadFromQueue(#[source] tokio::task::JoinError),
 
@@ -42,9 +39,6 @@ pub enum Error {
 
     #[error("Invalid SAS token: {0}")]
     InvalidSasToken(&'static str),
-
-    #[error("unexpected status code: {status}")]
-    UnexpectedStatusCode { status: u16 },
 
     #[error("size conversion error")]
     SizeConversion,
@@ -84,28 +78,19 @@ struct SasToken {
     token: String,
 }
 
-// After the next release of azure_storage_blobs, this should be replaced with
-// azure_core::error::Error, and no longer downcast_ref.
-//
-// ref: https://github.com/Azure/azure-sdk-for-rust/pull/816
-fn check_transient(err: Box<dyn std::error::Error + Sync + Send>) -> backoff::Error<Error> {
-    if let Some(error) = &err.downcast_ref::<AzureError>() {
-        match error.kind() {
-            ErrorKind::HttpResponse { status, .. } => {
-                if let Ok(status) = StatusCode::from_u16(*status) {
-                    if !(status.is_redirection()
-                        || status.is_server_error()
-                        || status == StatusCode::TOO_MANY_REQUESTS)
-                    {
-                        return backoff::Error::permanent(Error::UploadFailed(err));
-                    }
-                }
+fn check_transient(err: AzureError) -> backoff::Error<Error> {
+    if let ErrorKind::HttpResponse { status, .. } = err.kind() {
+        if let Ok(status) = StatusCode::from_u16(*status) {
+            if !(status.is_redirection()
+                || status.is_server_error()
+                || status == StatusCode::TOO_MANY_REQUESTS)
+            {
+                return backoff::Error::permanent(err.into());
             }
-            _ => {}
         }
     }
     eprintln!("transient error: {}", err);
-    backoff::Error::transient(Error::UploadFailed(err))
+    backoff::Error::transient(err.into())
 }
 
 impl TryFrom<&Url> for SasToken {

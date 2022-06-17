@@ -102,9 +102,9 @@ dependencies = [
 
 [[package]]
 name = "azure_storage"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d21c9efa0126aefcdf620395b262143e86aa95002df3c3030a471ed9f5c4dad4"
+checksum = "d1a5bc29e999268e618c202f157291930d749f1e4de55e01ecfda3990dd37dc7"
 dependencies = [
  "RustyXML",
  "async-trait",
@@ -128,9 +128,9 @@ dependencies = [
 
 [[package]]
 name = "azure_storage_blobs"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47f61c2e25e51058f4ff5a9298620e4b8534326a9f2d2936b6aca5c0ac76aaca"
+checksum = "b2baa5f9f6c9e4ee9d096d2e21d21c4a5f120e9a0bbcd3ee7c8abb74b008b631"
 dependencies = [
  "RustyXML",
  "azure_core",
