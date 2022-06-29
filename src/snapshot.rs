@@ -211,7 +211,7 @@ impl<'a, 'b> Snapshot<'a, 'b> {
         for phdr in file.phdrs {
             // Skip PT_LOAD that do not represent physical memory
             // TODO: compare to (-1)
-            if phdr.paddr == 0xffffffff || phdr.paddr == 0xffffffffffffffff {
+            if phdr.paddr == 0xffff_ffff || phdr.paddr == 0xffff_ffff_ffff_ffff {
                 continue;
             }
 
