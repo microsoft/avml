@@ -205,7 +205,6 @@ impl<'a, 'b> Snapshot<'a, 'b> {
         let first_physical_address = first_memory_range.start;
         let last_memory_range = &self.memory_ranges[self.memory_ranges.len() - 1];
         let last_physical_address = last_memory_range.end + 1;
-        
         let mut found_first: bool = false;
         let mut blocks = vec![];
 
