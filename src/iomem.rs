@@ -8,8 +8,11 @@ pub enum Error {
     #[error("unable to read from /proc/iomem")]
     Io(#[from] std::io::Error),
 
-    #[error("unable to parse values")]
+    #[error("unable to parse value")]
     Parse(#[from] std::num::ParseIntError),
+
+    #[error("unable to parse line: {0}")]
+    ParseLine(String),
 
     #[error("need CAP_SYS_ADMIN to read /proc/iomem")]
     PermissionDenied,
@@ -36,15 +39,23 @@ fn parse_file(path: &Path) -> Result<Vec<Range<u64>>, Error> {
         let mut line1 = line
             .split_terminator(' ')
             .next()
-            .expect("invalid iomem line")
+            .ok_or_else(|| Error::ParseLine("invalid iomem line".to_string()))?
             .split_terminator('-');
-        let start = line1.next().expect("invalid range");
-        let end = line1.next().expect("invalid range end");
+
+        let start = line1
+            .next()
+            .ok_or_else(|| Error::ParseLine("invalid range start".to_string()))?;
         let start = u64::from_str_radix(start, 16)?;
+
+        let end = line1
+            .next()
+            .ok_or_else(|| Error::ParseLine("invalid range end".to_string()))?;
         let end = u64::from_str_radix(end, 16)?;
+
         if start == 0 && end == 0 {
             return Err(Error::PermissionDenied);
         }
+
         ranges.push(start..end);
     }
 
@@ -58,10 +69,13 @@ pub fn merge_ranges(mut ranges: Vec<Range<u64>>) -> Vec<Range<u64>> {
 
     while !ranges.is_empty() {
         let mut range = ranges.remove(0);
+
+        #[allow(clippy::indexing_slicing)]
         while !ranges.is_empty() && range.end >= ranges[0].start {
             let next = ranges.remove(0);
             range = range.start..next.end;
         }
+
         result.push(range);
     }
 
