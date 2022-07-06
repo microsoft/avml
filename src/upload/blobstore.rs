@@ -294,7 +294,7 @@ impl BlobUploader {
     /// upload a stream to Azure Blob Store using a fully qualified SAS token
     async fn upload_stream<R>(self, handle: R) -> Result<()>
     where
-        R: AsyncRead + Unpin,
+        R: AsyncRead + Unpin + Send,
     {
         let block_size = self.block_size.map(|x| x.saturating_mul(ONE_MB));
 
@@ -325,7 +325,7 @@ impl BlobUploader {
 
     async fn block_reader<R>(&self, mut handle: R, block_size: usize) -> Result<Vec<Bytes>>
     where
-        R: AsyncRead + Unpin,
+        R: AsyncRead + Unpin + Send,
     {
         let mut block_list = vec![];
 

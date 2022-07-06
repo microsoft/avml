@@ -1,6 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#![deny(clippy::unwrap_used)]
+#![deny(clippy::expect_used)]
+#![deny(clippy::panic)]
+#![deny(clippy::manual_assert)]
+#![deny(clippy::indexing_slicing)]
+
 use avml::{image, iomem::split_ranges, Error, Result, Snapshot, Source, ONE_MB};
 use clap::{ArgEnum, Parser};
 use snap::read::FrameDecoder;

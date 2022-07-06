@@ -78,10 +78,10 @@ pub enum Source {
 impl std::fmt::Display for Source {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Source::DevCrash => write!(f, "/dev/crash"),
-            Source::DevMem => write!(f, "/dev/mem"),
-            Source::ProcKcore => write!(f, "/proc/kcore"),
-            Source::Raw(path) => write!(f, "{}", path.display()),
+            Self::DevCrash => write!(f, "/dev/crash"),
+            Self::DevMem => write!(f, "/dev/mem"),
+            Self::ProcKcore => write!(f, "/proc/kcore"),
+            Self::Raw(path) => write!(f, "{}", path.display()),
         }
     }
 }
@@ -245,7 +245,18 @@ impl<'a, 'b> Snapshot<'a, 'b> {
         let mut file = elf::File::open_stream(&mut image.src).map_err(Error::Elf)?;
         file.phdrs.retain(|&x| x.progtype == elf::types::PT_LOAD);
         file.phdrs.sort_by(|a, b| a.vaddr.cmp(&b.vaddr));
-        let start = file.phdrs[0].vaddr - self.memory_ranges[0].start;
+
+        let first_vaddr = file
+            .phdrs
+            .get(0)
+            .ok_or_else(|| Error::UnableToCreateSnapshot("no initial addresses".to_string()))?
+            .vaddr;
+        let first_start = self
+            .memory_ranges
+            .get(0)
+            .ok_or_else(|| Error::UnableToCreateSnapshot("no initial memory range".to_string()))?
+            .start;
+        let start = first_vaddr - first_start;
 
         let mut physical_ranges = vec![];
 
