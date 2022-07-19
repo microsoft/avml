@@ -18,7 +18,7 @@ blobstore = ["url", "azure_core", "azure_storage", "azure_storage_blobs", "tokio
 status = ["atty", "indicatif"]
 
 [dependencies]
-bytes = "1.1"
+bytes = "1.2"
 elf = "0.0.10"
 byteorder = "1.3"
 clap = { version = "3.2", default-features = false, features=["derive", "std"] }
