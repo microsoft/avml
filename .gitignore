@@ -9,3 +9,5 @@
 
 # any freta analysis cache files
 *.cache
+
+eng/licenses.json

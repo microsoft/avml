@@ -7,15 +7,22 @@
 #![deny(clippy::manual_assert)]
 #![deny(clippy::indexing_slicing)]
 
-use avml::{put, BlobUploader, Error};
+use avml::{put, BlobUploader};
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
+use std::{
+    io::{stdout, Write},
+    path::PathBuf,
+};
 use tokio::runtime::Runtime;
 use url::Url;
 
 #[derive(Parser)]
 #[clap(version)]
 struct Cmd {
+    /// display license information
+    #[clap(long, value_parser)]
+    license: bool,
+
     #[clap(subcommand)]
     subcommand: SubCommands,
 }
@@ -70,6 +77,12 @@ async fn run(cmd: Cmd) -> avml::Result<()> {
 
 fn main() -> avml::Result<()> {
     let cmd = Cmd::parse();
-    Runtime::new().map_err(Error::Tokio)?.block_on(run(cmd))?;
+
+    if cmd.license {
+        stdout().write_all(include_bytes!("../../eng/licenses.json"))?;
+        return Ok(());
+    }
+
+    Runtime::new()?.block_on(run(cmd))?;
     Ok(())
 }

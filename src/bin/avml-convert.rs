@@ -13,7 +13,7 @@ use snap::read::FrameDecoder;
 use std::{
     convert::TryFrom,
     fs::metadata,
-    io::{prelude::*, SeekFrom},
+    io::{prelude::*, stdout, SeekFrom, Write},
     path::{Path, PathBuf},
 };
 
@@ -126,6 +126,10 @@ fn convert_from_raw(src: &Path, dst: &Path, compress: bool) -> Result<()> {
 /// AVML compress/decompress tool
 #[clap(version)]
 struct Config {
+    /// display license information
+    #[clap(long, value_parser)]
+    license: bool,
+
     /// specify output format [possible values: raw, lime, lime_compressed.  Default: lime_compressed]
     #[clap(long, arg_enum, default_value_t = Format::LimeCompressed, value_parser)]
     source_format: Format,
@@ -153,6 +157,11 @@ enum Format {
 
 fn main() -> Result<()> {
     let config = Config::parse();
+
+    if config.license {
+        stdout().write_all(include_bytes!("../../eng/licenses.json"))?;
+        return Ok(());
+    }
 
     match (config.source_format, config.format) {
         (Format::Lime | Format::LimeCompressed, Format::Raw) => {

@@ -7,11 +7,12 @@
 #![deny(clippy::manual_assert)]
 #![deny(clippy::indexing_slicing)]
 
-#[cfg(any(feature = "blobstore", feature = "put"))]
-use avml::Error;
 use avml::{iomem, Result, Snapshot, Source};
 use clap::Parser;
-use std::path::PathBuf;
+use std::{
+    io::{stdout, Write},
+    path::PathBuf,
+};
 #[cfg(any(feature = "blobstore", feature = "put"))]
 use tokio::{fs::remove_file, runtime::Runtime};
 #[cfg(any(feature = "blobstore", feature = "put"))]
@@ -21,6 +22,10 @@ use url::Url;
 /// A portable volatile memory acquisition tool for Linux
 #[clap(version)]
 struct Config {
+    /// display license information
+    #[clap(long, value_parser)]
+    license: bool,
+
     /// compress via snappy
     #[clap(long, value_parser)]
     compress: bool,
@@ -83,9 +88,7 @@ async fn upload(config: &Config) -> Result<()> {
     }
 
     if delete && config.delete {
-        remove_file(&config.filename)
-            .await
-            .map_err(Error::RemoveSnapshot)?;
+        remove_file(&config.filename).await?;
     }
 
     Ok(())
@@ -93,6 +96,11 @@ async fn upload(config: &Config) -> Result<()> {
 
 fn main() -> Result<()> {
     let config = Config::parse();
+
+    if config.license {
+        stdout().write_all(include_bytes!("../../eng/licenses.json"))?;
+        return Ok(());
+    }
 
     let version = if config.compress { 2 } else { 1 };
 
@@ -104,7 +112,7 @@ fn main() -> Result<()> {
 
     #[cfg(any(feature = "blobstore", feature = "put"))]
     {
-        let rt = Runtime::new().map_err(Error::Tokio)?;
+        let rt = Runtime::new()?;
         rt.block_on(upload(&config))?;
     }
 

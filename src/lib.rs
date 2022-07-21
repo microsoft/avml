@@ -38,17 +38,12 @@ pub enum Error {
     #[error("unable to upload file via PUT")]
     Upload(#[from] crate::upload::http::Error),
 
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
+
     #[cfg(feature = "blobstore")]
     #[error("unable to upload file to Azure Storage")]
     Blob(#[from] crate::upload::blobstore::Error),
-
-    #[cfg(any(feature = "blobstore", feature = "put"))]
-    #[error("tokio runtime error: {0}")]
-    Tokio(#[source] std::io::Error),
-
-    #[cfg(any(feature = "blobstore", feature = "put"))]
-    #[error("unable to remove snapshot")]
-    RemoveSnapshot(#[source] std::io::Error),
 
     #[error("no conversion required")]
     NoConversionRequired,
