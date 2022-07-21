@@ -19,9 +19,9 @@ use url::Url;
 #[derive(Parser)]
 #[clap(version)]
 struct Cmd {
-    /// display license information
+    /// display 3rd party license information
     #[clap(long, value_parser)]
-    license: bool,
+    licenses: bool,
 
     #[clap(subcommand)]
     subcommand: SubCommands,
@@ -78,7 +78,7 @@ async fn run(cmd: Cmd) -> avml::Result<()> {
 fn main() -> avml::Result<()> {
     let cmd = Cmd::parse();
 
-    if cmd.license {
+    if cmd.licenses {
         stdout().write_all(include_bytes!("../../eng/licenses.json"))?;
         return Ok(());
     }

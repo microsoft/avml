@@ -22,9 +22,9 @@ use url::Url;
 /// A portable volatile memory acquisition tool for Linux
 #[clap(version)]
 struct Config {
-    /// display license information
+    /// display 3rd party license information
     #[clap(long, value_parser)]
-    license: bool,
+    licenses: bool,
 
     /// compress via snappy
     #[clap(long, value_parser)]
@@ -97,7 +97,7 @@ async fn upload(config: &Config) -> Result<()> {
 fn main() -> Result<()> {
     let config = Config::parse();
 
-    if config.license {
+    if config.licenses {
         stdout().write_all(include_bytes!("../../eng/licenses.json"))?;
         return Ok(());
     }

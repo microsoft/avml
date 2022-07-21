@@ -126,9 +126,9 @@ fn convert_from_raw(src: &Path, dst: &Path, compress: bool) -> Result<()> {
 /// AVML compress/decompress tool
 #[clap(version)]
 struct Config {
-    /// display license information
+    /// display 3rd party license information
     #[clap(long, value_parser)]
-    license: bool,
+    licenses: bool,
 
     /// specify output format [possible values: raw, lime, lime_compressed.  Default: lime_compressed]
     #[clap(long, arg_enum, default_value_t = Format::LimeCompressed, value_parser)]
@@ -158,7 +158,7 @@ enum Format {
 fn main() -> Result<()> {
     let config = Config::parse();
 
-    if config.license {
+    if config.licenses {
         stdout().write_all(include_bytes!("../../eng/licenses.json"))?;
         return Ok(());
     }
