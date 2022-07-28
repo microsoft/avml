@@ -48,12 +48,12 @@ type Result<T> = std::result::Result<T, Error>;
 
 // https://docs.microsoft.com/en-us/azure/storage/blobs/scalability-targets#scale-targets-for-blob-storage
 const BLOB_MAX_BLOCKS: usize = 50_000;
-const BLOB_MAX_BLOCK_SIZE: usize = ONE_MB.saturated_mul(4000);
-const BLOB_MAX_FILE_SIZE: usize = BLOB_MAX_BLOCKS.saturated_mul(BLOB_MAX_BLOCK_SIZE);
+const BLOB_MAX_BLOCK_SIZE: usize = ONE_MB.saturating_mul(4000);
+const BLOB_MAX_FILE_SIZE: usize = BLOB_MAX_BLOCKS.saturating_mul(BLOB_MAX_BLOCK_SIZE);
 
 // trigger's the "high-throughput block blobs" on all storage accounts
 // https://azure.microsoft.com/en-us/blog/high-throughput-with-azure-blob-storage/
-const BLOB_MIN_BLOCK_SIZE: usize = ONE_MB.saturated_mul(5);
+const BLOB_MIN_BLOCK_SIZE: usize = ONE_MB.saturating_mul(5);
 
 // Azure's default max request rate for a storage account is 20,000 per second.
 // By keeping to 10 or fewer concurrent upload threads, AVML can be used to
@@ -64,7 +64,7 @@ const BLOB_MIN_BLOCK_SIZE: usize = ONE_MB.saturated_mul(5);
 const MAX_CONCURRENCY: usize = 10;
 
 // if we're uploading *huge* files, use 100MB chunks
-const REASONABLE_BLOCK_SIZE: usize = ONE_MB.saturated_mul(100);
+const REASONABLE_BLOCK_SIZE: usize = ONE_MB.saturating_mul(100);
 
 pub struct UploadBlock {
     id: Bytes,
@@ -395,8 +395,8 @@ impl BlobUploader {
 mod tests {
     use super::*;
 
-    const ONE_GB: usize = ONE_MB.saturated_mul(1024);
-    const ONE_TB: usize = ONE_GB.saturated_mul(1024);
+    const ONE_GB: usize = ONE_MB.saturating_mul(1024);
+    const ONE_TB: usize = ONE_GB.saturating_mul(1024);
 
     #[test]
     fn test_parse_sas_url() -> Result<()> {
@@ -479,7 +479,7 @@ mod tests {
         );
 
         let (block_size, uploaders_count) =
-            calc_concurrency(Some(ONE_TB.saturated_mul(32)), None, None)?;
+            calc_concurrency(Some(ONE_TB.saturating_mul(32)), None, None)?;
         assert!(block_size > REASONABLE_BLOCK_SIZE && block_size < BLOB_MAX_BLOCK_SIZE);
         assert_eq!(uploaders_count, 1);
 
