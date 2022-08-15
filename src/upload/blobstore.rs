@@ -3,17 +3,12 @@
 
 use crate::{upload::status::Status, ONE_MB};
 use async_channel::{bounded, Receiver, Sender};
-use azure_core::{
-    error::{Error as AzureError, ErrorKind},
-    new_http_client,
-};
-use azure_storage::core::prelude::*;
+use azure_core::error::Error as AzureError;
+use azure_storage::prelude::*;
 use azure_storage_blobs::prelude::*;
-use backoff::{future::retry, ExponentialBackoff};
 use bytes::Bytes;
 use futures::future::try_join_all;
-use http::StatusCode;
-use std::{cmp, convert::TryFrom, marker::Unpin, path::Path, sync::Arc};
+use std::{cmp, convert::TryFrom, marker::Unpin, path::Path};
 use tokio::{
     fs::File,
     io::{AsyncRead, AsyncReadExt},
@@ -76,21 +71,6 @@ struct SasToken {
     container: String,
     path: String,
     token: String,
-}
-
-fn check_transient(err: AzureError) -> backoff::Error<Error> {
-    if let ErrorKind::HttpResponse { status, .. } = err.kind() {
-        if let Ok(status) = StatusCode::from_u16(*status) {
-            if !(status.is_redirection()
-                || status.is_server_error()
-                || status == StatusCode::TOO_MANY_REQUESTS)
-            {
-                return backoff::Error::permanent(err.into());
-            }
-        }
-    }
-    eprintln!("transient error: {}", err);
-    backoff::Error::transient(err.into())
 }
 
 impl TryFrom<&Url> for SasToken {
@@ -186,7 +166,7 @@ fn calc_concurrency(
 
 #[derive(Clone)]
 pub struct BlobUploader {
-    client: Arc<BlobClient>,
+    client: BlobClient,
     size: Option<usize>,
     block_size: Option<usize>,
     concurrency: Option<usize>,
@@ -198,12 +178,9 @@ impl BlobUploader {
     pub fn new(sas: &Url) -> Result<Self> {
         let sas: SasToken = sas.try_into()?;
 
-        let http_client = new_http_client();
-        let blob_client =
-            StorageAccountClient::new_sas_token(http_client, &sas.account, &sas.token)?
-                .as_storage_client()
-                .as_container_client(sas.container)
-                .as_blob_client(sas.path);
+        let blob_client = StorageClient::new_sas_token(&sas.account, &sas.token)?
+            .container_client(sas.container)
+            .blob_client(sas.path);
 
         Ok(Self::with_blob_client(blob_client))
     }
@@ -212,7 +189,7 @@ impl BlobUploader {
     ///
     /// Ref: <https://docs.rs/azure_storage_blobs/latest/azure_storage_blobs/prelude/struct.BlobClient.html>
     #[must_use]
-    pub fn with_blob_client(client: Arc<BlobClient>) -> Self {
+    pub fn with_blob_client(client: BlobClient) -> Self {
         let (sender, receiver) = bounded::<UploadBlock>(1);
 
         Self {
@@ -279,14 +256,7 @@ impl BlobUploader {
 
         let block_list = BlockList { blocks };
 
-        retry(ExponentialBackoff::default(), || async {
-            self.client
-                .put_block_list(&block_list)
-                .execute()
-                .await
-                .map_err(check_transient)
-        })
-        .await?;
+        self.client.put_block_list(block_list).into_future().await?;
 
         Ok(())
     }
@@ -357,34 +327,29 @@ impl BlobUploader {
     }
 
     async fn block_uploader(
-        client: Arc<BlobClient>,
+        client: BlobClient,
         receiver: Receiver<UploadBlock>,
         status: Status,
     ) -> Result<()> {
         // the channel will respond with an Err to indicate the channel is closed
         while let Ok(upload_chunk) = receiver.recv().await {
-            let hash = md5::compute(upload_chunk.data.clone()).into();
+            let hash = md5::compute(upload_chunk.data.clone());
 
-            let result = retry(ExponentialBackoff::default(), || async {
-                let data_for_req = upload_chunk.data.clone();
-                let block_id_for_req = upload_chunk.id.clone();
+            let chunk_len = upload_chunk.data.len();
 
-                client
-                    .put_block(block_id_for_req, data_for_req)
-                    .hash(&hash)
-                    .execute()
-                    .await
-                    .map_err(check_transient)
-            })
-            .await;
-
-            status.inc(upload_chunk.data.len());
+            let result = client
+                .put_block(upload_chunk.id, upload_chunk.data)
+                .hash(hash)
+                .into_future()
+                .await;
 
             // as soon as any error is seen (after retrying), bail out and stop other uploaders
             if result.is_err() {
                 receiver.close();
                 result?;
             }
+
+            status.inc(chunk_len);
         }
 
         Ok(())
