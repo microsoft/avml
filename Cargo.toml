@@ -37,7 +37,7 @@ azure_storage_blobs = { version = "0.4", default-features = false, features = ["
 azure_core = { version = "0.3", default-features= false, features = ["enable_reqwest_rustls"], optional = true }
 async-channel = {version="1.7", optional=true}
 atty = { version = "0.2", optional=true }
-indicatif = { version = "0.16", optional=true }
+indicatif = { version = "0.17", optional=true }
 
 [profile.release]
 opt-level="z"
