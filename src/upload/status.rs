@@ -2,9 +2,12 @@
 // Licensed under the MIT License.
 
 #[cfg(all(feature = "status", any(feature = "blobstore", feature = "put")))]
+use indicatif::{ProgressBar, ProgressFinish, ProgressStyle};
+
+#[cfg(all(feature = "status", any(feature = "blobstore", feature = "put")))]
 #[derive(Clone)]
 pub struct Status {
-    bar: Option<indicatif::ProgressBar>,
+    bar: Option<ProgressBar>,
     total: Option<u64>,
 }
 
@@ -14,11 +17,13 @@ impl Status {
         let size = total.unwrap_or(0) as u64;
         let bar = if atty::is(atty::Stream::Stdin) {
             Some(
-                indicatif::ProgressBar::new(size).with_style(
-                    indicatif::ProgressStyle::default_bar()
-                        .template("{bytes} ({bytes_per_sec})")
-                        .on_finish(indicatif::ProgressFinish::AtCurrentPos),
-                ),
+                ProgressBar::new(size)
+                    .with_style(
+                        ProgressStyle::default_bar()
+                            .template("{bytes} ({bytes_per_sec})")
+                            .expect("progress bar build failed"),
+                    )
+                    .with_finish(ProgressFinish::AndLeave),
             )
         } else {
             None
