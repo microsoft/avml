@@ -22,6 +22,8 @@ or kernel a priori.  No on-target compilation or fingerprinting is needed.
 
 If the memory source is not specified on the commandline, AVML will iterate over the memory sources to find a functional source.
 
+> NOTE: If the kernel feature [kernel\_lockdown](https://man7.org/linux/man-pages/man7/kernel_lockdown.7.html) is enabled, AVML will be unable to acquire memory.
+
 ## Tested Distributions
 * Ubuntu: 12.04, 14.04, 16.04, 18.04, 18.10, 19.04, 19.10, 20.04, 21.04, 22.04
 * Centos: 6.5, 6.6, 6.7, 6.8, 6.9, 6.10, 7.0, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.9
