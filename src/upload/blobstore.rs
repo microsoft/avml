@@ -177,8 +177,8 @@ pub struct BlobUploader {
 impl BlobUploader {
     pub fn new(sas: &Url) -> Result<Self> {
         let sas: SasToken = sas.try_into()?;
-
-        let blob_client = StorageClient::new_sas_token(&sas.account, &sas.token)?
+        let credentials = StorageCredentials::sas_token(&sas.token)?;
+        let blob_client = BlobServiceClient::new(&sas.account, credentials)
             .container_client(sas.container)
             .blob_client(sas.path);
 
