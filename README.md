@@ -27,10 +27,10 @@ If the memory source is not specified on the commandline, AVML will iterate over
 ## Tested Distributions
 * Ubuntu: 12.04, 14.04, 16.04, 18.04, 18.10, 19.04, 19.10, 20.04, 21.04, 22.04
 * Centos: 6.5, 6.6, 6.7, 6.8, 6.9, 6.10, 7.0, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.9
-* RHEL: 6.7, 6.8, 6.9, 7.0, 7.2, 7.3, 7.4, 7.5, 7.7, 8.5
-* Debian: 8, 9, 10, 11
-* Oracle Linux: 6.8, 6.9, 6.10, 7.3, 7.4, 7.5, 7.6, 7.9, 8.5
-* [CBL-Mariner](https://github.com/microsoft/CBL-Mariner): 1.0
+* RHEL: 6.7, 6.8, 6.9, 7.0, 7.2, 7.3, 7.4, 7.5, 7.7, 8.5, 9.0
+* Debian: 8, 9, 10, 11, 12
+* Oracle Linux: 6.8, 6.9, 6.10, 7.3, 7.4, 7.5, 7.6, 7.9, 8.5, 9.0
+* [CBL-Mariner](https://github.com/microsoft/CBL-Mariner): 1.0, 2.0
 
 # Getting Started
 
@@ -101,39 +101,49 @@ avml-convert --source-format lime --format lime_compressed ./uncompressed.lime .
 # Usage
 
 ```
-USAGE:
-    avml [OPTIONS] <FILENAME>
+A portable volatile memory acquisition tool
 
-ARGS:
-    <FILENAME>    name of the file to write to on local system
+Usage: avml [OPTIONS] <FILENAME>
 
-OPTIONS:
-        --compress
-            compress via snappy
+Arguments:
+  <FILENAME>
+          name of the file to write to on local system
 
-        --delete
-            delete upon successful upload
+Options:
+      --compress
+          compress via snappy
 
-    -h, --help
-            Print help information
+      --source <SOURCE>
+          specify input source
 
-        --sas-block-concurrency <SAS_BLOCK_CONCURRENCY>
-            specify blob upload concurrency
+          Possible values:
+          - /dev/crash:
+            Provides a read-only view of physical memory.  Access to memory using this device must be paged aligned and read one page at a time
+          - /dev/mem:
+            Provides a read-write view of physical memory, though AVML opens it in a read-only fashion.  Access to to memory using this device can be disabled using the kernel configuration options `CONFIG_STRICT_DEVMEM` or `CONFIG_IO_STRICT_DEVMEM`
+          - /proc/kcore:
+            Provides a virtual ELF coredump of kernel memory.  This can be used to access physical memory
 
-        --sas-block-size <SAS_BLOCK_SIZE>
-            specify maximum block size in MiB
+      --url <URL>
+          upload via HTTP PUT upon acquisition
 
-        --sas-url <SAS_URL>
-            upload via Azure Blob Store upon acquisition
+      --delete
+          delete upon successful upload
 
-        --source <SOURCE>
-            specify input source [possible values: /dev/crash, /dev/mem, /proc/kcore]
+      --sas-url <SAS_URL>
+          upload via Azure Blob Store upon acquisition
 
-        --url <URL>
-            upload via HTTP PUT upon acquisition
+      --sas-block-size <SAS_BLOCK_SIZE>
+          specify maximum block size in MiB
 
-    -V, --version
-            Print version information
+      --sas-block-concurrency <SAS_BLOCK_CONCURRENCY>
+          specify blob upload concurrency
+
+  -h, --help
+          Print help information (use `-h` for a summary)
+
+  -V, --version
+          Print version information
 ```
 
 # Building on Ubuntu
