@@ -14,46 +14,43 @@ use tokio::runtime::Runtime;
 use url::Url;
 
 #[derive(Parser)]
-#[clap(version)]
+#[command(version)]
+/// AVML upload tool
 struct Cmd {
-    #[clap(subcommand)]
-    subcommand: SubCommands,
+    #[command(subcommand)]
+    command: Commands,
 }
 
 #[derive(Subcommand)]
-enum SubCommands {
+enum Commands {
     Put {
         /// name of the file to upload on the local system
-        #[clap(value_parser)]
         filename: PathBuf,
 
-        // url to upload via HTTP PUT
-        #[clap(value_parser)]
+        /// url to upload via HTTP PUT
         url: Url,
     },
     UploadBlob {
         /// name of the file to upload on the local system
-        #[clap(value_parser)]
         filename: PathBuf,
 
-        // url to upload via Azure Blob Storage
-        #[clap(value_parser)]
+        /// url to upload via Azure Blob Storage
         url: Url,
 
         /// specify blob upload concurrency
-        #[clap(long, value_parser)]
+        #[arg(long)]
         sas_block_concurrency: Option<usize>,
 
         /// specify maximum block size in MiB
-        #[clap(long, value_parser)]
+        #[arg(long)]
         sas_block_size: Option<usize>,
     },
 }
 
 async fn run(cmd: Cmd) -> avml::Result<()> {
-    match cmd.subcommand {
-        SubCommands::Put { filename, url } => put(&filename, &url).await?,
-        SubCommands::UploadBlob {
+    match cmd.command {
+        Commands::Put { filename, url } => put(&filename, &url).await?,
+        Commands::UploadBlob {
             filename,
             url,
             sas_block_size,

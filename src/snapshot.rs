@@ -5,7 +5,7 @@ use crate::{
     format_error,
     image::{Block, Image},
 };
-use clap::ArgEnum;
+use clap::ValueEnum;
 use std::{
     fs::{metadata, OpenOptions},
     ops::Range,
@@ -38,40 +38,39 @@ impl std::fmt::Debug for Error {
 
 type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, Clone, ArgEnum)]
+#[derive(Debug, Clone, ValueEnum)]
 pub enum Source {
-    ///  `/dev/crash` provides a read-only view of physical memory.  Access to
-    ///  memory using this device must be paged aligned and read one page at a
-    ///  time.
+    /// Provides a read-only view of physical memory.  Access to memory using
+    /// this device must be paged aligned and read one page at a time.
     ///
     /// On RHEL based distributions, this device is frequently provided by
     /// default.  A loadable kernel module version is available as part of
     /// the Linux utility `crash`:
     /// <https://github.com/crash-utility/crash/tree/master/memory_driver>
-    #[clap(name = "/dev/crash")]
+    #[value(name = "/dev/crash")]
     DevCrash,
 
-    ///  `/dev/mem` provides a read-write view of physical memory, though AVML
-    ///  opens it in a read-only fashion.  Access to to memory using this device
-    ///  can be disabled using the kernel configuration options
-    ///  `CONFIG_STRICT_DEVMEM` or `CONFIG_IO_STRICT_DEVMEM`.
+    /// Provides a read-write view of physical memory, though AVML opens it in a
+    /// read-only fashion.  Access to to memory using this device can be
+    /// disabled using the kernel configuration options `CONFIG_STRICT_DEVMEM`
+    /// or `CONFIG_IO_STRICT_DEVMEM`.
     ///
     /// With `CONFIG_STRICT_DEVMEM`, only the first 1MB of memory can be
     /// accessed.
-    #[clap(name = "/dev/mem")]
+    #[value(name = "/dev/mem")]
     DevMem,
 
-    ///  `/proc/kcore` provides a virtual ELF coredump of kernel memory.  This can
-    /// be used to access physical memory.
+    /// Provides a virtual ELF coredump of kernel memory.  This can be used to
+    /// access physical memory.
     ///
     /// If LOCKDOWN_KCORE is set in the kernel, then /proc/kcore may exist but
     /// is either inaccessible or doesn't allow access to all of the kernel
     /// memory.
-    #[clap(name = "/proc/kcore")]
+    #[value(name = "/proc/kcore")]
     ProcKcore,
 
     /// User-specified path to a raw memory file
-    #[clap(skip)]
+    #[value(skip)]
     Raw(PathBuf),
 }
 

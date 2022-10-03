@@ -8,7 +8,7 @@
 #![deny(clippy::indexing_slicing)]
 
 use avml::{image, iomem::split_ranges, Error, Result, Snapshot, Source, ONE_MB};
-use clap::{ArgEnum, Parser};
+use clap::{Parser, ValueEnum};
 use snap::read::FrameDecoder;
 use std::{
     convert::TryFrom,
@@ -124,30 +124,28 @@ fn convert_from_raw(src: &Path, dst: &Path, compress: bool) -> Result<()> {
 
 #[derive(Parser)]
 /// AVML compress/decompress tool
-#[clap(version)]
+#[command(version)]
 struct Config {
-    /// specify output format [possible values: raw, lime, lime_compressed.  Default: lime_compressed]
-    #[clap(long, arg_enum, default_value_t = Format::LimeCompressed, value_parser)]
+    /// specify output format
+    #[arg(long, value_enum, default_value_t = Format::LimeCompressed)]
     source_format: Format,
 
     /// specify output format
-    #[clap(long, arg_enum, default_value_t = Format::Lime, value_parser)]
+    #[arg(long, value_enum, default_value_t = Format::Lime)]
     format: Format,
 
     /// name of the source file to read to on local system
-    #[clap(value_parser)]
     src: PathBuf,
 
     /// name of the destination file to write to on local system
-    #[clap(value_parser)]
     dst: PathBuf,
 }
 
-#[derive(ArgEnum, Clone)]
+#[derive(ValueEnum, Clone)]
 enum Format {
     Raw,
     Lime,
-    #[clap(rename_all = "snake_case")]
+    #[value(rename_all = "snake_case")]
     LimeCompressed,
 }
 
