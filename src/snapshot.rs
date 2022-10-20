@@ -6,6 +6,7 @@ use crate::{
     image::{Block, Image},
 };
 use clap::ValueEnum;
+use elf::{gabi::PT_LOAD, segment::ProgType};
 use std::{
     fs::{metadata, OpenOptions},
     ops::Range,
@@ -14,8 +15,8 @@ use std::{
 
 #[derive(thiserror::Error)]
 pub enum Error {
-    #[error("unable to parse elf structures")]
-    Elf(elf::ParseError),
+    #[error("unable to parse elf structures: {0}")]
+    Elf(String),
 
     #[error("locked down /proc/kcore")]
     LockedDownKcore,
@@ -241,15 +242,16 @@ impl<'a, 'b> Snapshot<'a, 'b> {
 
         let mut image = Image::new(self.version, Path::new("/proc/kcore"), self.destination)?;
 
-        let mut file = elf::File::open_stream(&mut image.src).map_err(Error::Elf)?;
-        file.phdrs.retain(|&x| x.progtype == elf::types::PT_LOAD);
-        file.phdrs.sort_by(|a, b| a.vaddr.cmp(&b.vaddr));
+        let mut file =
+            elf::File::open_stream(&mut image.src).map_err(|e| Error::Elf(format!("{:?}", e)))?;
+        file.phdrs.retain(|&x| x.p_type == ProgType(PT_LOAD));
+        file.phdrs.sort_by(|a, b| a.p_vaddr.cmp(&b.p_vaddr));
 
         let first_vaddr = file
             .phdrs
             .get(0)
             .ok_or_else(|| Error::UnableToCreateSnapshot("no initial addresses".to_string()))?
-            .vaddr;
+            .p_vaddr;
         let first_start = self
             .memory_ranges
             .get(0)
@@ -260,12 +262,12 @@ impl<'a, 'b> Snapshot<'a, 'b> {
         let mut physical_ranges = vec![];
 
         for phdr in file.phdrs {
-            let entry_start = phdr.vaddr - start;
-            let entry_end = entry_start + phdr.memsz;
+            let entry_start = phdr.p_vaddr - start;
+            let entry_end = entry_start + phdr.p_memsz;
 
             physical_ranges.push(Block {
                 range: entry_start..entry_end,
-                offset: phdr.offset,
+                offset: phdr.p_offset,
             });
         }
 
