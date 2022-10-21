@@ -6,6 +6,11 @@ use crate::{
     image::{Block, Image},
 };
 use clap::ValueEnum;
+use elf::{
+    gabi::PT_LOAD,
+    segment::{ProgType, ProgramHeader},
+    CachedReadBytes,
+};
 use std::{
     fs::{metadata, OpenOptions},
     ops::Range,
@@ -14,7 +19,7 @@ use std::{
 
 #[derive(thiserror::Error)]
 pub enum Error {
-    #[error("unable to parse elf structures")]
+    #[error("unable to parse elf structures: {0}")]
     Elf(elf::ParseError),
 
     #[error("locked down /proc/kcore")]
@@ -241,15 +246,20 @@ impl<'a, 'b> Snapshot<'a, 'b> {
 
         let mut image = Image::new(self.version, Path::new("/proc/kcore"), self.destination)?;
 
-        let mut file = elf::File::open_stream(&mut image.src).map_err(Error::Elf)?;
-        file.phdrs.retain(|&x| x.progtype == elf::types::PT_LOAD);
-        file.phdrs.sort_by(|a, b| a.vaddr.cmp(&b.vaddr));
+        let mut elf_handle = CachedReadBytes::new(&mut image.src);
 
-        let first_vaddr = file
-            .phdrs
+        let mut file = elf::File::open_stream(&mut elf_handle).map_err(Error::Elf)?;
+        let mut segments: Vec<ProgramHeader> = file
+            .segments()
+            .map_err(Error::Elf)?
+            .filter(|x| x.p_type == ProgType(PT_LOAD))
+            .collect();
+        segments.sort_by(|a, b| a.p_vaddr.cmp(&b.p_vaddr));
+
+        let first_vaddr = segments
             .get(0)
             .ok_or_else(|| Error::UnableToCreateSnapshot("no initial addresses".to_string()))?
-            .vaddr;
+            .p_vaddr;
         let first_start = self
             .memory_ranges
             .get(0)
@@ -259,13 +269,13 @@ impl<'a, 'b> Snapshot<'a, 'b> {
 
         let mut physical_ranges = vec![];
 
-        for phdr in file.phdrs {
-            let entry_start = phdr.vaddr - start;
-            let entry_end = entry_start + phdr.memsz;
+        for phdr in segments {
+            let entry_start = phdr.p_vaddr - start;
+            let entry_end = entry_start + phdr.p_memsz;
 
             physical_ranges.push(Block {
                 range: entry_start..entry_end,
-                offset: phdr.offset,
+                offset: phdr.p_offset,
             });
         }
 

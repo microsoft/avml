@@ -19,7 +19,7 @@ status = ["atty", "indicatif"]
 
 [dependencies]
 bytes = "1.2"
-elf = "0.0.11"
+elf = "0.3"
 byteorder = "1.3"
 clap = { version = "4.0", default-features = false, features=["derive", "std", "usage", "error-context", "help"]}
 http = "0.2"
