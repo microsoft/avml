@@ -322,9 +322,9 @@ checksum = "4f94fa09c2aeea5b8839e414b7b841bf429fd25b9c522116ac97ee87856d88b2"
 
 [[package]]
 name = "elf"
-version = "0.1.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "843028ba5ad08ee96716a1fc43b861837be1bc7a87fc0c6aa659ca5ddea6ee48"
+checksum = "5b1730300ab7a73981fad05d0b23476474af53b33604eb6da728bee1165aed23"
 
 [[package]]
 name = "encode_unicode"
