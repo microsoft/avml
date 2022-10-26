@@ -51,8 +51,8 @@ struct Config {
 
     /// specify blob upload concurrency
     #[cfg(feature = "blobstore")]
-    #[arg(long)]
-    sas_block_concurrency: Option<usize>,
+    #[arg(long, default_value_t=avml::DEFAULT_CONCURRENCY)]
+    sas_block_concurrency: usize,
 
     /// name of the file to write to on local system
     filename: PathBuf,

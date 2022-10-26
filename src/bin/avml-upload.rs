@@ -7,7 +7,7 @@
 #![deny(clippy::manual_assert)]
 #![deny(clippy::indexing_slicing)]
 
-use avml::{put, BlobUploader, Error};
+use avml::{put, BlobUploader, Error, DEFAULT_CONCURRENCY};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use tokio::runtime::Runtime;
@@ -38,8 +38,8 @@ enum Commands {
         url: Url,
 
         /// specify blob upload concurrency
-        #[arg(long)]
-        sas_block_concurrency: Option<usize>,
+        #[arg(long, default_value_t=DEFAULT_CONCURRENCY)]
+        sas_block_concurrency: usize,
 
         /// specify maximum block size in MiB
         #[arg(long)]
