@@ -246,9 +246,9 @@ impl<'a, 'b> Snapshot<'a, 'b> {
 
         let mut image = Image::new(self.version, Path::new("/proc/kcore"), self.destination)?;
 
-        let mut elf_handle = CachedReadBytes::new(&mut image.src);
+        let elf_handle = CachedReadBytes::new(&mut image.src);
 
-        let mut file = elf::File::open_stream(&mut elf_handle).map_err(Error::Elf)?;
+        let mut file = elf::File::open_stream(elf_handle).map_err(Error::Elf)?;
         let mut segments: Vec<ProgramHeader> = file
             .segments()
             .map_err(Error::Elf)?
