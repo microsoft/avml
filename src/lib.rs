@@ -14,7 +14,7 @@ mod upload;
 mod write_counter;
 
 #[cfg(feature = "blobstore")]
-pub use crate::upload::blobstore::BlobUploader;
+pub use crate::upload::blobstore::{BlobUploader, DEFAULT_CONCURRENCY};
 
 #[cfg(feature = "put")]
 pub use crate::upload::http::put;
