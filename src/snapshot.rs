@@ -6,11 +6,7 @@ use crate::{
     image::{Block, Image},
 };
 use clap::ValueEnum;
-use elf::{
-    gabi::PT_LOAD,
-    segment::{ProgType, ProgramHeader},
-    CachedReadBytes,
-};
+use elf::{gabi::PT_LOAD, segment::ProgramHeader, CachedReadBytes};
 use std::{
     fs::{metadata, OpenOptions},
     ops::Range,
@@ -252,7 +248,8 @@ impl<'a, 'b> Snapshot<'a, 'b> {
         let mut segments: Vec<ProgramHeader> = file
             .segments()
             .map_err(Error::Elf)?
-            .filter(|x| x.p_type == ProgType(PT_LOAD))
+            .iter()
+            .filter(|x| x.p_type == PT_LOAD)
             .collect();
         segments.sort_by(|a, b| a.p_vaddr.cmp(&b.p_vaddr));
 
