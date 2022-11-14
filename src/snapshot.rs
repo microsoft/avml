@@ -6,7 +6,7 @@ use crate::{
     image::{Block, Image},
 };
 use clap::ValueEnum;
-use elf::{gabi::PT_LOAD, segment::ProgramHeader, CachedReadBytes};
+use elf::{abi::PT_LOAD, endian::NativeEndian, segment::ProgramHeader};
 use std::{
     fs::{metadata, OpenOptions},
     ops::Range,
@@ -242,12 +242,10 @@ impl<'a, 'b> Snapshot<'a, 'b> {
 
         let mut image = Image::new(self.version, Path::new("/proc/kcore"), self.destination)?;
 
-        let elf_handle = CachedReadBytes::new(&mut image.src);
-
-        let mut file = elf::File::open_stream(elf_handle).map_err(Error::Elf)?;
-        let mut segments: Vec<ProgramHeader> = file
+        let file =
+            elf::ElfStream::<NativeEndian, _>::open_stream(&mut image.src).map_err(Error::Elf)?;
+        let mut segments: Vec<&ProgramHeader> = file
             .segments()
-            .map_err(Error::Elf)?
             .iter()
             .filter(|x| x.p_type == PT_LOAD)
             .collect();
