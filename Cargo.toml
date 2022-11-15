@@ -21,7 +21,7 @@ status = ["atty", "indicatif"]
 byteorder = "1.3"
 bytes = "1.2"
 clap = {version="4.0", default-features=false, features=["derive", "std", "usage", "error-context", "help"]}
-elf = "0.6"
+elf = "0.7"
 futures = "0.3"
 http = "0.2"
 md5 = "0.7"
