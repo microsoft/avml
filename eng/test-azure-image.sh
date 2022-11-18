@@ -6,15 +6,16 @@
 
 set -e
 
-CONFIG=/tmp/test-config.json.`date '+%Y-%m-%d-%H-%M-%S'`.$$
+INSTANCE=$(uuidgen)
+LOG=/tmp/avml-test-${INSTANCE}.log
+CONFIG=/tmp/test-config.json.${INSTANCE}
+GROUP=vm-capture-test-${INSTANCE}
+VM=${INSTANCE}
+REGION=eastus
 TOOL_URL=${1}
 SKU=${2:-RedHat:RHEL:8:8.0.2019050711}
 SIZE=${3:-Standard_B1ls}
-REGION=eastus
-GROUP=vm-capture-test-`date '+%Y-%m-%d-%H-%M-%S'`-$$
-VM=$(uuidgen)
 
-LOG=/tmp/avml-test-$(dd if=/dev/urandom | tr -dc 'a-z0-9' | fold -w 24 | head -n 1).log
 function fail {
     echo ERROR
     cat "${LOG}"

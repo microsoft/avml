@@ -2,7 +2,7 @@
 
 set -ex
 
-rustup update
+rustup update stable
 cargo update
 cargo test --target x86_64-unknown-linux-musl --release
 cargo build --target x86_64-unknown-linux-musl --release  --locked --no-default-features
