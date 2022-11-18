@@ -6,18 +6,21 @@
 
 set -e
 
-LOG=/tmp/.log_$$.txt
+
+INSTANCE=$(uuidgen)
+LOG=/tmp/avml-test-log-${INSTANCE}.txt
+GROUP=vm-capture-test-${INSTANCE}
+REGION=eastus
+
 
 IMAGES_TXT=${1:-eng/images.txt}
 FILE=${2:-target/x86_64-unknown-linux-musl/release/avml}
-GROUP=vm-capture-test-`date '+%Y-%m-%d-%H-%M-%S'`-$$
-REGION=eastus
 STORAGE=$(dd if=/dev/urandom | tr -dc 'a-z0-9' | fold -w 24 | head -n 1)
 DST_PATH=$(dd if=/dev/urandom | tr -dc 'a-z0-9' | fold -w 24 | head -n 1)/avml
 CONTAINER=tools
 URL=https://${STORAGE}.blob.core.windows.net/${CONTAINER}/${DST_PATH}
 
-LOG=/tmp/$(dd if=/dev/urandom | tr -dc 'a-z0-9' | fold -w 24 | head -n 1).log
+LOG=/tmp/avml-run-${INSTANCE}.log
 function fail {
     echo ERROR
     cat "${LOG}"

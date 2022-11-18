@@ -170,7 +170,7 @@ The testing scripts will create, use, and cleanup a number of resource groups, v
 1. Install [az cli](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli)
 2. Login to your Azure subscription using: `az login`
 3. Build avml (see above)
-4. ./eng/run.sh
+4. ./eng/test-on-azure.sh
 
 # Contributing
 
