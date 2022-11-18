@@ -19,6 +19,7 @@ impl Status {
             Some(
                 ProgressBar::new(size)
                     .with_style(
+                        #[allow(clippy::expect_used)]
                         ProgressStyle::default_bar()
                             .template("{bytes} ({bytes_per_sec})")
                             .expect("progress bar build failed"),

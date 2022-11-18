@@ -51,7 +51,7 @@ mod tests {
         let buf = Cursor::new(vec![]);
         let mut counter = Counter::new(buf);
 
-        counter.write_all(data).unwrap();
+        assert!(counter.write_all(data).is_ok());
         assert_eq!(counter.count(), data.len());
         assert_eq!(counter.into_inner().into_inner(), data);
     }
@@ -66,7 +66,7 @@ mod tests {
             let mut counter = Counter::new(cursor);
             {
                 let mut snap = FrameEncoder::new(&mut counter);
-                snap.write_all(&many_a).unwrap();
+                assert!(snap.write_all(&many_a).is_ok());
             }
             // verify we had some compression here...
             assert!(counter.count() < size);
@@ -79,7 +79,7 @@ mod tests {
             let mut counter = Counter::new(decoded);
             {
                 let mut snap = FrameDecoder::new(&mut compressed);
-                std::io::copy(&mut snap, &mut counter).unwrap();
+                assert!(std::io::copy(&mut snap, &mut counter).is_ok());
             }
             assert_eq!(counter.count(), size, "verify decoded size");
             counter.into_inner().into_inner()
