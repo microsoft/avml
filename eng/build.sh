@@ -15,7 +15,7 @@ cp target/x86_64-unknown-linux-musl/release/avml target/x86_64-unknown-linux-mus
 cargo build --release --target x86_64-unknown-linux-musl --locked
 cargo build --release --target x86_64-unknown-linux-musl --locked --bin avml-upload --features "put blobstore status"
 cargo test --release --target x86_64-unknown-linux-musl --locked
-cargo clippy -- -D clippy::pedantic -A clippy::missing_errors_doc
+cargo clippy --locked --all-targets --all-features -- -D warnings -D clippy::pedantic -A clippy::missing_errors_doc
 strip target/x86_64-unknown-linux-musl/release/avml
 strip target/x86_64-unknown-linux-musl/release/avml-minimal
 strip target/x86_64-unknown-linux-musl/release/avml-convert
