@@ -330,7 +330,7 @@ mod tests {
             },
             version: 1,
         };
-        assert_eq!(header.encode().unwrap(), *expected);
+        assert!(matches!(header.encode(), Ok(x) if x == *expected));
 
         let expected = b"\x41\x56\x4d\x4c\x02\x00\x00\x00\x00\x10\x00\x00\x00\x00\x00\x00\
                          \x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
@@ -341,6 +341,6 @@ mod tests {
             },
             version: 2,
         };
-        assert_eq!(header.encode().unwrap(), *expected);
+        assert!(matches!(header.encode(), Ok(x) if x == *expected));
     }
 }

@@ -118,7 +118,7 @@ mod tests {
     }
 
     #[test]
-    fn test_split_ranges() -> Result<(), Error> {
+    fn test_split_ranges() {
         let result = split_ranges(vec![0..30], 10);
         let expected = [0..10, 10..20, 20..30];
         assert_eq!(result, expected);
@@ -130,8 +130,6 @@ mod tests {
         let result = split_ranges(vec![0..10, 10..20, 20..30], 7);
         let expected = [0..7, 7..10, 10..17, 17..20, 20..27, 27..30];
         assert_eq!(result, expected);
-
-        Ok(())
     }
 
     #[test]
@@ -194,7 +192,7 @@ mod tests {
                     264_675_328..267_280_383,
                     267_739_136..267_866_111,
                     267_870_208..3_221_225_471,
-                    4_294_967296..13_958_643_711,
+                    4_294_967_296..13_958_643_711,
                 ],
             ),
         ] {
