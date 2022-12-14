@@ -4,11 +4,10 @@
 use crate::{upload::status::Status, ONE_MB};
 use async_channel::{bounded, Receiver, Sender};
 use azure_core::error::Error as AzureError;
-use azure_storage::prelude::*;
 use azure_storage_blobs::prelude::*;
 use bytes::Bytes;
 use futures::future::try_join_all;
-use std::{cmp, convert::TryFrom, marker::Unpin, path::Path};
+use std::{cmp, marker::Unpin, path::Path};
 use tokio::{
     fs::File,
     io::{AsyncRead, AsyncReadExt},
@@ -31,9 +30,6 @@ pub enum Error {
 
     #[error("error uploading file")]
     Azure(#[from] AzureError),
-
-    #[error("Invalid SAS token: {0}")]
-    InvalidSasToken(&'static str),
 
     #[error("size conversion error")]
     SizeConversion,
@@ -94,49 +90,6 @@ const DEFAULT_FILE_SIZE: usize = 1024 * 1024 * 1024 * 1024;
 pub struct UploadBlock {
     id: Bytes,
     data: Bytes,
-}
-
-struct SasToken {
-    account: String,
-    container: String,
-    path: String,
-    token: String,
-}
-
-impl TryFrom<&Url> for SasToken {
-    type Error = Error;
-
-    fn try_from(url: &Url) -> Result<Self> {
-        let account = url
-            .host_str()
-            .ok_or(Error::InvalidSasToken("missing host"))?
-            .split_terminator('.')
-            .next()
-            .ok_or(Error::InvalidSasToken("unable to determine account name"))?
-            .to_string();
-
-        let token = url
-            .query()
-            .ok_or(Error::InvalidSasToken("missing token"))?
-            .to_string();
-
-        let path = url.path();
-        let mut v: Vec<&str> = path.split_terminator('/').collect();
-        v.remove(0);
-        let container = v.remove(0).to_string();
-        let path = v.join("/");
-
-        if path.is_empty() {
-            return Err(Error::InvalidSasToken("missing blob name"));
-        }
-
-        Ok(Self {
-            account,
-            container,
-            path,
-            token,
-        })
-    }
 }
 
 fn calc_concurrency(
@@ -217,12 +170,7 @@ pub struct BlobUploader {
 
 impl BlobUploader {
     pub fn new(sas: &Url) -> Result<Self> {
-        let sas: SasToken = sas.try_into()?;
-        let credentials = StorageCredentials::sas_token(&sas.token)?;
-        let blob_client = BlobServiceClient::new(&sas.account, credentials)
-            .container_client(sas.container)
-            .blob_client(sas.path);
-
+        let blob_client = BlobClient::from_sas_url(sas)?;
         Ok(Self::with_blob_client(blob_client))
     }
 
@@ -404,24 +352,6 @@ mod tests {
 
     const ONE_GB: usize = ONE_MB.saturating_mul(1024);
     const ONE_TB: usize = ONE_GB.saturating_mul(1024);
-
-    #[test]
-    fn test_parse_sas_url() -> Result<()> {
-        let url = &reqwest::Url::parse(
-            "https://myaccount.blob.core.windows.net/mycontainer/myblob?sas=data&here=1",
-        )
-        .map_err(|_| Error::InvalidSasToken("unable to parse url"))?;
-        let _token: SasToken = url.try_into()?;
-
-        let url = &reqwest::Url::parse(
-            "https://myaccount.blob.core.windows.net/mycontainer?sas=data&here=1",
-        )
-        .map_err(|_| Error::InvalidSasToken("unable to parse url"))?;
-        let result: Result<SasToken> = url.try_into();
-        assert!(result.is_err());
-
-        Ok(())
-    }
 
     #[test]
     fn test_calc_concurrency() -> Result<()> {
