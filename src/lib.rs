@@ -60,7 +60,7 @@ pub(crate) fn format_error(
     e: &impl std::error::Error,
     f: &mut std::fmt::Formatter,
 ) -> std::fmt::Result {
-    write!(f, "error: {}", e)?;
+    write!(f, "error: {e}")?;
 
     let mut source = e.source();
 
@@ -68,7 +68,7 @@ pub(crate) fn format_error(
         writeln!(f, "\ncaused by:")?;
         let mut i: usize = 0;
         while let Some(inner) = source {
-            writeln!(f, "{: >5}: {}", i, inner)?;
+            writeln!(f, "{i: >5}: {inner}")?;
             source = inner.source();
             i += 1;
         }
@@ -86,7 +86,7 @@ impl std::fmt::Debug for Error {
 pub(crate) fn indent<T: AsRef<str>>(data: T, indent: usize) -> String {
     data.as_ref()
         .split('\n')
-        .map(|line| format!("{:indent$}{}", "", line, indent = indent))
+        .map(|line| format!("{:indent$}{line}", ""))
         .collect::<Vec<_>>()
         .join("\n")
 }

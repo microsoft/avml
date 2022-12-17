@@ -14,7 +14,7 @@ pub struct Status {
 #[cfg(all(feature = "status", any(feature = "blobstore", feature = "put")))]
 impl Status {
     pub fn new(total: Option<u64>) -> Self {
-        let size = total.unwrap_or(0) as u64;
+        let size = total.unwrap_or(0);
         let bar = if atty::is(atty::Stream::Stdin) {
             Some(
                 ProgressBar::new(size)

@@ -305,7 +305,7 @@ impl BlobUploader {
 
             let data = data.into();
 
-            let id = Bytes::from(format!("{:032x}", i));
+            let id = Bytes::from(format!("{i:032x}"));
 
             block_list.push(id.clone());
 
