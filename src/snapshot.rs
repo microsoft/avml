@@ -91,7 +91,7 @@ fn can_open(src: &Path) -> bool {
     OpenOptions::new().read(true).open(src).is_ok()
 }
 
-// The file /proc/kcore is a psuedo-file in ELF core format that is 4KB+physical
+// The file /proc/kcore is a pseudo-file in ELF core format that is 4KB+physical
 // memory in size.
 //
 // If LOCKDOWN_KCORE is set in the kernel, then /proc/kcore may exist but is
@@ -192,7 +192,7 @@ impl<'a, 'b> Snapshot<'a, 'b> {
     }
 
     // given a set of ranges from iomem and a set of Blocks derived from the
-    // psuedo-elf phys section headers, derive a set of ranges that can be used
+    // pseudo-elf phys section headers, derive a set of ranges that can be used
     // to create a snapshot.
     fn find_kcore_blocks(ranges: &[Range<u64>], headers: &[Block]) -> Vec<Block> {
         let mut result = vec![];
