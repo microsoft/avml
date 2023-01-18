@@ -133,7 +133,6 @@ macro_rules! try_method {
                     err,
                     Error::UnableToCreateSnapshotFromSource(ref x, _) if matches!(x.as_ref(), Error::DiskUsageEstimateExceeded(_,_)),
                 ) {
-                    println!("bailing early due to disk usage");
                     return Err(err);
                 }
                 crate::indent(format!("{:?}", err), 4)
