@@ -2,13 +2,14 @@
 // Licensed under the MIT License.
 
 use crate::{
-    format_error,
+    disk_usage, format_error,
     image::{Block, Image},
 };
 use clap::ValueEnum;
 use elf::{abi::PT_LOAD, endian::NativeEndian, segment::ProgramHeader};
 use std::{
     fs::{metadata, OpenOptions},
+    num::NonZeroU64,
     ops::Range,
     path::{Path, PathBuf},
 };
@@ -21,14 +22,25 @@ pub enum Error {
     #[error("locked down /proc/kcore")]
     LockedDownKcore,
 
+    #[error(
+        "estimated usage exceeds specified bounds: estimated size:{0} bytes. allowed:{1} bytes"
+    )]
+    DiskUsageEstimateExceeded(u64, u64),
+
     #[error("unable to create memory snapshot")]
     UnableToCreateMemorySnapshot(#[from] crate::image::Error),
 
     #[error("unable to create memory snapshot from source: {1}")]
-    UnableToCreateSnapshotFromSource(#[source] Box<dyn std::error::Error>, Source),
+    UnableToCreateSnapshotFromSource(#[source] Box<Error>, Source),
 
     #[error("unable to create memory snapshot: {0}")]
     UnableToCreateSnapshot(String),
+
+    #[error("{0}: {1}")]
+    Other(&'static str, String),
+
+    #[error("disk error")]
+    Disk(#[source] std::io::Error),
 }
 
 impl std::fmt::Debug for Error {
@@ -37,7 +49,7 @@ impl std::fmt::Debug for Error {
     }
 }
 
-type Result<T> = std::result::Result<T, Error>;
+pub(crate) type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Clone, ValueEnum)]
 pub enum Source {
@@ -107,11 +119,25 @@ fn is_kcore_ok() -> bool {
         && can_open(Path::new("/proc/kcore"))
 }
 
+// try to perform an action, either returning on success, or having the result
+// of the error in an indented string.
+//
+// This special cases `DiskUsageEstimateExceeded` errors, as we want this to
+// fail fast and bail out of the `try_method` caller.
 macro_rules! try_method {
     ($func:expr) => {{
         match $func {
             Ok(x) => return Ok(x),
-            Err(err) => crate::indent(format!("{:?}", err), 4),
+            Err(err) => {
+                if matches!(
+                    err,
+                    Error::UnableToCreateSnapshotFromSource(ref x, _) if matches!(x.as_ref(), Error::DiskUsageEstimateExceeded(_,_)),
+                ) {
+                    println!("bailing early due to disk usage");
+                    return Err(err);
+                }
+                crate::indent(format!("{:?}", err), 4)
+            }
         }
     }};
 }
@@ -121,6 +147,8 @@ pub struct Snapshot<'a, 'b> {
     destination: &'a Path,
     memory_ranges: Vec<Range<u64>>,
     version: u32,
+    max_disk_usage: Option<NonZeroU64>,
+    min_free_space_percentage: Option<f64>,
 }
 
 impl<'a, 'b> Snapshot<'a, 'b> {
@@ -134,6 +162,30 @@ impl<'a, 'b> Snapshot<'a, 'b> {
             destination,
             memory_ranges,
             version: 1,
+            max_disk_usage: None,
+            min_free_space_percentage: None,
+        }
+    }
+
+    /// Specify the minimum free space to stay under
+    ///
+    /// This is an estimation, calculated at start time
+    #[must_use]
+    pub fn min_free_space_percentage(self, min_free_space_percentage: Option<f64>) -> Self {
+        Self {
+            min_free_space_percentage,
+            ..self
+        }
+    }
+
+    /// Specify the maximum disk space in MB to use
+    ///
+    /// This is an estimation, calculated at start time
+    #[must_use]
+    pub fn max_disk_usage(self, max_disk_usage: Option<NonZeroU64>) -> Self {
+        Self {
+            max_disk_usage,
+            ..self
         }
     }
 
@@ -235,12 +287,26 @@ impl<'a, 'b> Snapshot<'a, 'b> {
         result
     }
 
+    /// Check disk usage of the destination
+    ///
+    /// NOTE: This requires `Image` because we want to ensure this is called
+    /// after the file is created.
+    fn check_disk_usage(&self, _: &Image) -> Result<()> {
+        disk_usage::check(
+            self.destination,
+            &self.memory_ranges,
+            self.max_disk_usage,
+            self.min_free_space_percentage,
+        )
+    }
+
     fn kcore(&self) -> Result<()> {
         if !is_kcore_ok() {
             return Err(Error::LockedDownKcore);
         }
 
         let mut image = Image::new(self.version, Path::new("/proc/kcore"), self.destination)?;
+        self.check_disk_usage(&image)?;
 
         let file =
             elf::ElfStream::<NativeEndian, _>::open_stream(&mut image.src).map_err(Error::Elf)?;
@@ -295,6 +361,7 @@ impl<'a, 'b> Snapshot<'a, 'b> {
             .collect::<Vec<_>>();
 
         let mut image = Image::new(self.version, mem, self.destination)?;
+        self.check_disk_usage(&image)?;
 
         image.write_blocks(&blocks)?;
 

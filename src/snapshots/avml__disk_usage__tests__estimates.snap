@@ -1,0 +1,5 @@
+---
+source: src/disk_usage.rs
+expression: "estimate(&[0..100, 100..200, 200..300])"
+---
+307500

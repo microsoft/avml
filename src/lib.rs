@@ -7,6 +7,7 @@
 #![deny(clippy::manual_assert)]
 #![deny(clippy::indexing_slicing)]
 
+mod disk_usage;
 pub mod image;
 pub mod iomem;
 mod snapshot;
