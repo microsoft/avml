@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#[cfg(target_family = "unix")]
+use crate::disk_usage;
 use crate::{
-    disk_usage, format_error,
+    format_error,
     image::{Block, Image},
 };
 use clap::ValueEnum;
