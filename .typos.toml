@@ -1,0 +1,5 @@
+[files]
+extend-exclude = [
+    # there are a test input files, not source code which we manage
+    "test/*.txt",
+]
