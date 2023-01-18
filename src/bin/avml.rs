@@ -33,9 +33,9 @@ struct Config {
     #[arg(long)]
     max_disk_usage: Option<NonZeroU64>,
 
-    /// Specify the minimum estimated free space (in percentage) to stay under
-    #[arg(long, value_parser = min_disk_usage_percentage)]
-    min_free_space_percentage: Option<f64>,
+    /// Specify the maximum estimated disk usage to stay under
+    #[arg(long, value_parser = disk_usage_percentage)]
+    max_disk_usage_percentage: Option<f64>,
 
     /// upload via HTTP PUT upon acquisition
     #[cfg(feature = "put")]
@@ -68,7 +68,7 @@ struct Config {
 
 const PERCENTAGE: Range<f64> = 0.01..100.0;
 
-fn min_disk_usage_percentage(s: &str) -> std::result::Result<f64, String> {
+fn disk_usage_percentage(s: &str) -> std::result::Result<f64, String> {
     let value = s
         .parse()
         .map_err(|_| format!("`{s}` isn't a valid value"))?;
@@ -122,7 +122,7 @@ fn main() -> Result<()> {
     let ranges = iomem::parse()?;
     let snapshot = Snapshot::new(&config.filename, ranges)
         .source(config.source.as_ref())
-        .min_free_space_percentage(config.min_free_space_percentage)
+        .max_disk_usage_percentage(config.max_disk_usage_percentage)
         .max_disk_usage(config.max_disk_usage)
         .version(version);
     snapshot.create()?;

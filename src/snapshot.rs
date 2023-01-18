@@ -147,7 +147,7 @@ pub struct Snapshot<'a, 'b> {
     memory_ranges: Vec<Range<u64>>,
     version: u32,
     max_disk_usage: Option<NonZeroU64>,
-    min_free_space_percentage: Option<f64>,
+    max_disk_usage_percentage: Option<f64>,
 }
 
 impl<'a, 'b> Snapshot<'a, 'b> {
@@ -162,17 +162,17 @@ impl<'a, 'b> Snapshot<'a, 'b> {
             memory_ranges,
             version: 1,
             max_disk_usage: None,
-            min_free_space_percentage: None,
+            max_disk_usage_percentage: None,
         }
     }
 
-    /// Specify the minimum free space to stay under
+    /// Specify the maximum disk usage to stay under as a percentage
     ///
     /// This is an estimation, calculated at start time
     #[must_use]
-    pub fn min_free_space_percentage(self, min_free_space_percentage: Option<f64>) -> Self {
+    pub fn max_disk_usage_percentage(self, max_disk_usage_percentage: Option<f64>) -> Self {
         Self {
-            min_free_space_percentage,
+            max_disk_usage_percentage,
             ..self
         }
     }
@@ -295,7 +295,7 @@ impl<'a, 'b> Snapshot<'a, 'b> {
             self.destination,
             &self.memory_ranges,
             self.max_disk_usage,
-            self.min_free_space_percentage,
+            self.max_disk_usage_percentage,
         )
     }
 

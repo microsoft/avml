@@ -25,7 +25,7 @@ pub(crate) fn check(
     image_path: &Path,
     memory_ranges: &[Range<u64>],
     max_disk_usage: Option<NonZeroU64>,
-    min_free_space_percentage: Option<f64>,
+    max_disk_usage_percentage: Option<f64>,
 ) -> Result<()> {
     let estimate_add = estimate(memory_ranges);
 
@@ -33,9 +33,9 @@ pub(crate) fn check(
         check_max_usage(estimate_add, max_disk_usage)?;
     }
 
-    if let Some(min_free_space_percentage) = min_free_space_percentage {
+    if let Some(max_disk_usage_percentage) = max_disk_usage_percentage {
         let disk_usage = disk_usage(image_path)?;
-        check_min_free_space(estimate_add, &disk_usage, min_free_space_percentage)?;
+        check_max_usage_percentage(estimate_add, &disk_usage, max_disk_usage_percentage)?;
     }
 
     Ok(())
@@ -54,16 +54,16 @@ fn check_max_usage(estimate_add: u64, max_disk_usage: NonZeroU64) -> Result<()> 
     Ok(())
 }
 
-fn check_min_free_space(
+fn check_max_usage_percentage(
     estimate_add: u64,
     disk_usage: &DiskUsage,
-    min_free_space_percentage: f64,
+    max_disk_usage_percentage: f64,
 ) -> Result<()> {
     let estimated_used = disk_usage.used.saturating_add(estimate_add);
 
     // assuming the disk was empty, how much could we use
     let max_allowed =
-        f64_to_u64(u64_to_f64(disk_usage.total)? * (min_free_space_percentage / 100.0))?;
+        f64_to_u64(u64_to_f64(disk_usage.total)? * (max_disk_usage_percentage / 100.0))?;
 
     if estimated_used > max_allowed {
         let allowed = max_allowed.saturating_sub(disk_usage.used);
@@ -216,9 +216,9 @@ mod tests {
     // Instead we have to provide pre-computed values for estimates and disk
     // usage to the underlying check function.
     #[test]
-    fn test_check_min_free_space() -> Result<()> {
+    fn test_check_max_usage_percentage() -> Result<()> {
         // usage should be well below allowed %
-        check_min_free_space(
+        check_max_usage_percentage(
             10,
             &DiskUsage {
                 total: 1000,
@@ -228,7 +228,7 @@ mod tests {
         )?;
 
         // usage should just at the allowed value
-        check_min_free_space(
+        check_max_usage_percentage(
             1,
             &DiskUsage {
                 total: 1000,
@@ -238,7 +238,7 @@ mod tests {
         )?;
 
         // disk is already past the max allowed, should fail even with a tiny addition
-        assert!(check_min_free_space(
+        assert!(check_max_usage_percentage(
             1,
             &DiskUsage {
                 total: 1000,
