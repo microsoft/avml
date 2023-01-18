@@ -290,6 +290,7 @@ impl<'a, 'b> Snapshot<'a, 'b> {
     ///
     /// NOTE: This requires `Image` because we want to ensure this is called
     /// after the file is created.
+    #[cfg(target_family = "unix")]
     fn check_disk_usage(&self, _: &Image) -> Result<()> {
         disk_usage::check(
             self.destination,
@@ -297,6 +298,14 @@ impl<'a, 'b> Snapshot<'a, 'b> {
             self.max_disk_usage,
             self.max_disk_usage_percentage,
         )
+    }
+
+    /// Check disk usage of the destination
+    ///
+    /// On non-Unix platforms, this operation is a no-op.
+    #[cfg(not(target_family = "unix"))]
+    fn check_disk_usage(&self, _: &Image) -> Result<()> {
+        Ok(())
     }
 
     fn kcore(&self) -> Result<()> {
