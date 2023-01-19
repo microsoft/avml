@@ -54,7 +54,7 @@ avml output.lime
 
 On a secure host with `az cli` credentials, generate a [SAS URL](https://docs.microsoft.com/en-us/azure/storage/common/storage-sas-overview).
 ```
-EXPIRY=$(date -d '1 day' '+%Y-%m-%dT%H:%MZ') 
+EXPIRY=$(date -d '1 day' '+%Y-%m-%dT%H:%MZ')
 SAS_URL=$(az storage blob generate-sas --account-name ACCOUNT --container CONTAINER test.lime --full-uri --permissions c --output tsv --expiry ${EXPIRY})
 ```
 
@@ -124,6 +124,12 @@ Options:
           - /proc/kcore:
             Provides a virtual ELF coredump of kernel memory.  This can be used to access physical memory
 
+      --max-disk-usage <MAX_DISK_USAGE>
+          Specify the maximum estimated disk usage (in MB)
+
+      --max-disk-usage-percentage <MAX_DISK_USAGE_PERCENTAGE>
+          Specify the maximum estimated disk usage to stay under
+
       --url <URL>
           upload via HTTP PUT upon acquisition
 
@@ -139,11 +145,13 @@ Options:
       --sas-block-concurrency <SAS_BLOCK_CONCURRENCY>
           specify blob upload concurrency
 
+          [default: 10]
+
   -h, --help
-          Print help information (use `-h` for a summary)
+          Print help (see a summary with '-h')
 
   -V, --version
-          Print version information
+          Print version
 ```
 
 # Building on Ubuntu
