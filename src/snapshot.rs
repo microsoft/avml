@@ -25,9 +25,9 @@ pub enum Error {
     LockedDownKcore,
 
     #[error(
-        "estimated usage exceeds specified bounds: estimated size:{0} bytes. allowed:{1} bytes"
+        "estimated usage exceeds specified bounds: estimated size:{estimated} bytes. allowed:{allowed} bytes"
     )]
-    DiskUsageEstimateExceeded(u64, u64),
+    DiskUsageEstimateExceeded { estimated: u64, allowed: u64 },
 
     #[error("unable to create memory snapshot")]
     UnableToCreateMemorySnapshot(#[from] crate::image::Error),
@@ -133,7 +133,7 @@ macro_rules! try_method {
             Err(err) => {
                 if matches!(
                     err,
-                    Error::UnableToCreateSnapshotFromSource(ref x, _) if matches!(x.as_ref(), Error::DiskUsageEstimateExceeded(_,_)),
+                    Error::UnableToCreateSnapshotFromSource(ref x, _) if matches!(x.as_ref(), Error::DiskUsageEstimateExceeded{..}),
                 ) {
                     return Err(err);
                 }
@@ -307,6 +307,12 @@ impl<'a, 'b> Snapshot<'a, 'b> {
     /// On non-Unix platforms, this operation is a no-op.
     #[cfg(not(target_family = "unix"))]
     fn check_disk_usage(&self, _: &Image) -> Result<()> {
+        if self.max_disk_usage.is_some() || self.max_disk_usage_percentage.is_some() {
+            return Err(Error::Other(
+                "unable to check disk usage on this platform",
+                format!("os:{std::env::consts::OS}"),
+            ));
+        }
         Ok(())
     }
 

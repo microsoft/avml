@@ -41,25 +41,22 @@ pub(crate) fn check(
     Ok(())
 }
 
-fn check_max_usage(estimate_add: u64, max_disk_usage: NonZeroU64) -> Result<()> {
+fn check_max_usage(estimated: u64, max_disk_usage: NonZeroU64) -> Result<()> {
     // convert to MB
-    let max_disk_usage_mb = max_disk_usage.get() * 1024 * 1024;
+    let allowed = max_disk_usage.get() * 1024 * 1024;
 
-    if estimate_add > max_disk_usage_mb {
-        return Err(Error::DiskUsageEstimateExceeded(
-            estimate_add,
-            max_disk_usage_mb,
-        ));
+    if estimated > allowed {
+        return Err(Error::DiskUsageEstimateExceeded { estimated, allowed });
     }
     Ok(())
 }
 
 fn check_max_usage_percentage(
-    estimate_add: u64,
+    estimated: u64,
     disk_usage: &DiskUsage,
     max_disk_usage_percentage: f64,
 ) -> Result<()> {
-    let estimated_used = disk_usage.used.saturating_add(estimate_add);
+    let estimated_used = disk_usage.used.saturating_add(estimated);
 
     // assuming the disk was empty, how much could we use
     let max_allowed =
@@ -67,7 +64,7 @@ fn check_max_usage_percentage(
 
     if estimated_used > max_allowed {
         let allowed = max_allowed.saturating_sub(disk_usage.used);
-        return Err(Error::DiskUsageEstimateExceeded(estimate_add, allowed));
+        return Err(Error::DiskUsageEstimateExceeded { estimated, allowed });
     }
 
     Ok(())
