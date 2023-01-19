@@ -76,7 +76,7 @@ fn disk_usage_percentage(s: &str) -> std::result::Result<f64, String> {
         Ok(value)
     } else {
         Err(format!(
-            "value is not a valid percentagein range {}-{}",
+            "value is not a valid percentage in range {}-{}",
             PERCENTAGE.start, PERCENTAGE.end
         ))
     }

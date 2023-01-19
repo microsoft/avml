@@ -10,6 +10,7 @@ use std::{ffi::CString, num::NonZeroU64, ops::Range, os::unix::ffi::OsStrExt, pa
 /// potential increase in storage from compression, as Snappy does not guarantee
 /// compression results in fewer bytes.
 const EXTRA_PADDING: u64 = 1024 * 100;
+const EXCESSIVE_VALUE: u64 = 4_000_000_000_000_000_000;
 
 #[derive(Debug)]
 struct DiskUsage {
@@ -72,15 +73,16 @@ fn check_max_usage_percentage(
 
 /// Attempt to convert u64 into f64
 ///
-/// Of note: The maximum value works out to be more than 18 exabytes, which is
-/// *way* more than any memory or disk we're likely to see any time soon.
+/// Of note: The maximum value works out to be more than 4 exabytes, which is *way* more than any
+/// memory or disk we're likely to see any time soon.
 ///
 /// `TryInto<f64> for u64` is not implemented.  This tries to be mindful of the
 /// following edge condition:
-/// 1. The value must be less than `f64::MAX - 1.0`
+/// 1. The value must be less than or equal to the const `EXCESSIVE_VALUE`
 #[allow(clippy::cast_precision_loss)]
+/// convert u64 into f64
 fn u64_to_f64(value: u64) -> Result<f64> {
-    if value > f64_to_u64(f64::MAX - 1.0)? {
+    if value > EXCESSIVE_VALUE {
         return Err(Error::Other(
             "unable to convert u64 to f64",
             format!("value is too large to convert to f64: {value}"),
@@ -94,7 +96,7 @@ fn u64_to_f64(value: u64) -> Result<f64> {
 /// `TryInto<u64> for f64` is not implemented.  This tries to be mindful of the
 /// following edge conditions:
 /// 1. The value must be a signed positive value
-/// 2. The value is explicitly truncated to the integer value
+/// 2. The value is explicitly truncated and clamped to the integer value
 #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
 fn f64_to_u64(value: f64) -> Result<u64> {
     if !value.is_sign_positive() {
@@ -148,6 +150,8 @@ fn disk_usage(path: &Path) -> Result<DiskUsage> {
 mod tests {
     use super::*;
 
+    const EXCESSIVE_VALUE_F64: f64 = 4_000_000_000_000_000_000.0;
+
     #[test]
     fn test_disk_usage() -> Result<()> {
         let current_exe = std::env::current_exe()
@@ -172,8 +176,8 @@ mod tests {
     // expect to see any time soon.
     #[test]
     fn test_conversion() -> Result<()> {
-        const EXCESSIVE_VALUE: u64 = 4_000_000_000_000_000_000;
-        const EXCESSIVE_VALUE_F64: f64 = 4_000_000_000_000_000_000.0;
+        // validate our assumptions that this should always reduce down to u64::MAX
+        assert_eq!(f64_to_u64(f64::MAX - 1.0)?, u64::MAX);
 
         f64_to_u64(0.0)?;
         assert!(f64_to_u64(-0.1).is_err());
