@@ -9,6 +9,8 @@ use crate::{
 };
 use clap::ValueEnum;
 use elf::{abi::PT_LOAD, endian::NativeEndian, segment::ProgramHeader};
+#[cfg(not(target_family = "unix"))]
+use std::env::consts::OS;
 use std::{
     fs::{metadata, OpenOptions},
     num::NonZeroU64,
@@ -310,7 +312,7 @@ impl<'a, 'b> Snapshot<'a, 'b> {
         if self.max_disk_usage.is_some() || self.max_disk_usage_percentage.is_some() {
             return Err(Error::Other(
                 "unable to check disk usage on this platform",
-                format!("os:{std::env::consts::OS}"),
+                format!("os:{OS}"),
             ));
         }
         Ok(())
