@@ -11,6 +11,7 @@ cd $(dirname ${BASH_SOURCE[0]})/../
 typos
 
 cargo fmt -- --check
+cargo semver-checks check-release
 cargo clippy --locked --all-targets --all-features -- -D warnings -D clippy::pedantic -A clippy::missing_errors_doc
 cargo test --release --target x86_64-unknown-linux-musl --locked --all-targets --all-features
 cargo build --release --no-default-features --target x86_64-unknown-linux-musl --locked
