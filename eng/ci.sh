@@ -9,4 +9,4 @@ set -uvex -o pipefail
 cd $(dirname ${BASH_SOURCE[0]})/../
 
 eng/setup.sh
-eng/build-post-setup.sh
+eng/build.sh
