@@ -1,14 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#[cfg(target_family = "unix")]
+use crate::disk_usage;
 use crate::{
     format_error,
     image::{Block, Image},
 };
 use clap::ValueEnum;
 use elf::{abi::PT_LOAD, endian::NativeEndian, segment::ProgramHeader};
+#[cfg(not(target_family = "unix"))]
+use std::env::consts::OS;
 use std::{
     fs::{metadata, OpenOptions},
+    num::NonZeroU64,
     ops::Range,
     path::{Path, PathBuf},
 };
@@ -21,14 +26,25 @@ pub enum Error {
     #[error("locked down /proc/kcore")]
     LockedDownKcore,
 
+    #[error(
+        "estimated usage exceeds specified bounds: estimated size:{estimated} bytes. allowed:{allowed} bytes"
+    )]
+    DiskUsageEstimateExceeded { estimated: u64, allowed: u64 },
+
     #[error("unable to create memory snapshot")]
     UnableToCreateMemorySnapshot(#[from] crate::image::Error),
 
     #[error("unable to create memory snapshot from source: {1}")]
-    UnableToCreateSnapshotFromSource(#[source] Box<dyn std::error::Error>, Source),
+    UnableToCreateSnapshotFromSource(#[source] Box<Error>, Source),
 
     #[error("unable to create memory snapshot: {0}")]
     UnableToCreateSnapshot(String),
+
+    #[error("{0}: {1}")]
+    Other(&'static str, String),
+
+    #[error("disk error")]
+    Disk(#[source] std::io::Error),
 }
 
 impl std::fmt::Debug for Error {
@@ -37,7 +53,7 @@ impl std::fmt::Debug for Error {
     }
 }
 
-type Result<T> = std::result::Result<T, Error>;
+pub(crate) type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Clone, ValueEnum)]
 pub enum Source {
@@ -107,11 +123,24 @@ fn is_kcore_ok() -> bool {
         && can_open(Path::new("/proc/kcore"))
 }
 
+// try to perform an action, either returning on success, or having the result
+// of the error in an indented string.
+//
+// This special cases `DiskUsageEstimateExceeded` errors, as we want this to
+// fail fast and bail out of the `try_method` caller.
 macro_rules! try_method {
     ($func:expr) => {{
         match $func {
             Ok(x) => return Ok(x),
-            Err(err) => crate::indent(format!("{:?}", err), 4),
+            Err(err) => {
+                if matches!(
+                    err,
+                    Error::UnableToCreateSnapshotFromSource(ref x, _) if matches!(x.as_ref(), Error::DiskUsageEstimateExceeded{..}),
+                ) {
+                    return Err(err);
+                }
+                crate::indent(format!("{:?}", err), 4)
+            }
         }
     }};
 }
@@ -121,6 +150,8 @@ pub struct Snapshot<'a, 'b> {
     destination: &'a Path,
     memory_ranges: Vec<Range<u64>>,
     version: u32,
+    max_disk_usage: Option<NonZeroU64>,
+    max_disk_usage_percentage: Option<f64>,
 }
 
 impl<'a, 'b> Snapshot<'a, 'b> {
@@ -134,6 +165,30 @@ impl<'a, 'b> Snapshot<'a, 'b> {
             destination,
             memory_ranges,
             version: 1,
+            max_disk_usage: None,
+            max_disk_usage_percentage: None,
+        }
+    }
+
+    /// Specify the maximum disk usage to stay under as a percentage
+    ///
+    /// This is an estimation, calculated at start time
+    #[must_use]
+    pub fn max_disk_usage_percentage(self, max_disk_usage_percentage: Option<f64>) -> Self {
+        Self {
+            max_disk_usage_percentage,
+            ..self
+        }
+    }
+
+    /// Specify the maximum disk space in MB to use
+    ///
+    /// This is an estimation, calculated at start time
+    #[must_use]
+    pub fn max_disk_usage(self, max_disk_usage: Option<NonZeroU64>) -> Self {
+        Self {
+            max_disk_usage,
+            ..self
         }
     }
 
@@ -235,12 +290,41 @@ impl<'a, 'b> Snapshot<'a, 'b> {
         result
     }
 
+    /// Check disk usage of the destination
+    ///
+    /// NOTE: This requires `Image` because we want to ensure this is called
+    /// after the file is created.
+    #[cfg(target_family = "unix")]
+    fn check_disk_usage(&self, _: &Image) -> Result<()> {
+        disk_usage::check(
+            self.destination,
+            &self.memory_ranges,
+            self.max_disk_usage,
+            self.max_disk_usage_percentage,
+        )
+    }
+
+    /// Check disk usage of the destination
+    ///
+    /// On non-Unix platforms, this operation is a no-op.
+    #[cfg(not(target_family = "unix"))]
+    fn check_disk_usage(&self, _: &Image) -> Result<()> {
+        if self.max_disk_usage.is_some() || self.max_disk_usage_percentage.is_some() {
+            return Err(Error::Other(
+                "unable to check disk usage on this platform",
+                format!("os:{OS}"),
+            ));
+        }
+        Ok(())
+    }
+
     fn kcore(&self) -> Result<()> {
         if !is_kcore_ok() {
             return Err(Error::LockedDownKcore);
         }
 
         let mut image = Image::new(self.version, Path::new("/proc/kcore"), self.destination)?;
+        self.check_disk_usage(&image)?;
 
         let file =
             elf::ElfStream::<NativeEndian, _>::open_stream(&mut image.src).map_err(Error::Elf)?;
@@ -295,6 +379,7 @@ impl<'a, 'b> Snapshot<'a, 'b> {
             .collect::<Vec<_>>();
 
         let mut image = Image::new(self.version, mem, self.destination)?;
+        self.check_disk_usage(&image)?;
 
         image.write_blocks(&blocks)?;
 

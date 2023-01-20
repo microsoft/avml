@@ -11,7 +11,7 @@
 use avml::Error;
 use avml::{iomem, Result, Snapshot, Source};
 use clap::Parser;
-use std::path::PathBuf;
+use std::{num::NonZeroU64, ops::Range, path::PathBuf};
 #[cfg(any(feature = "blobstore", feature = "put"))]
 use tokio::{fs::remove_file, runtime::Runtime};
 #[cfg(any(feature = "blobstore", feature = "put"))]
@@ -28,6 +28,14 @@ struct Config {
     /// specify input source
     #[arg(long, value_enum)]
     source: Option<Source>,
+
+    /// Specify the maximum estimated disk usage (in MB)
+    #[arg(long)]
+    max_disk_usage: Option<NonZeroU64>,
+
+    /// Specify the maximum estimated disk usage to stay under
+    #[arg(long, value_parser = disk_usage_percentage)]
+    max_disk_usage_percentage: Option<f64>,
 
     /// upload via HTTP PUT upon acquisition
     #[cfg(feature = "put")]
@@ -56,6 +64,22 @@ struct Config {
 
     /// name of the file to write to on local system
     filename: PathBuf,
+}
+
+const PERCENTAGE: Range<f64> = 0.01..100.0;
+
+fn disk_usage_percentage(s: &str) -> std::result::Result<f64, String> {
+    let value = s
+        .parse()
+        .map_err(|_| format!("`{s}` isn't a valid value"))?;
+    if PERCENTAGE.contains(&value) {
+        Ok(value)
+    } else {
+        Err(format!(
+            "value is not a valid percentage in range {}-{}",
+            PERCENTAGE.start, PERCENTAGE.end
+        ))
+    }
 }
 
 #[cfg(any(feature = "blobstore", feature = "put"))]
@@ -98,6 +122,8 @@ fn main() -> Result<()> {
     let ranges = iomem::parse()?;
     let snapshot = Snapshot::new(&config.filename, ranges)
         .source(config.source.as_ref())
+        .max_disk_usage_percentage(config.max_disk_usage_percentage)
+        .max_disk_usage(config.max_disk_usage)
         .version(version);
     snapshot.create()?;
 

@@ -7,6 +7,8 @@
 #![deny(clippy::manual_assert)]
 #![deny(clippy::indexing_slicing)]
 
+#[cfg(target_family = "unix")]
+mod disk_usage;
 pub mod image;
 pub mod iomem;
 mod snapshot;
