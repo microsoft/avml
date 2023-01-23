@@ -17,7 +17,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3.1.0
     - name: build
-      run: eng/build.sh
+      run: eng/ci.sh
     - name: Run tests
       run: sudo target/x86_64-unknown-linux-musl/release/avml --compress output.lime
     - name: upload artifacts

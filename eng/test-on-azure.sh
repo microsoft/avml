@@ -6,6 +6,7 @@
 
 set -e
 
+cd $(dirname ${BASH_SOURCE[0]})/../
 
 INSTANCE=$(uuidgen)
 LOG=/tmp/avml-test-log-${INSTANCE}.txt
