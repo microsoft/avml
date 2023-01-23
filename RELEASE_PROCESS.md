@@ -11,7 +11,7 @@ If you are the current maintainer of this package:
 
 1. Create a branch for updating the version number of AVML
 1. Bump the version in `Cargo.toml`
-1. Build & Locally test with the updated verfsion using: `./eng/ci.sh`
+1. Build & Locally test with the updated version using: `./eng/ci.sh`
 1. Test on multiple linux versions using: `./eng/test-on-azure.sh`
 1. Commit the updated `Cargo.toml` and `Cargo.lock`
 1. Submit & merge a PR from this branch with the updated version information to the [git repo](https://github.com/microsoft/avml).
