@@ -6,6 +6,8 @@
 
 set -e
 
+cd $(dirname ${BASH_SOURCE[0]})/../
+
 IMAGES_TXT=${1:-eng/images.txt}
 CONVERT=${2:-target/x86_64-unknown-linux-musl/release/avml-convert}
 
