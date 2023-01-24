@@ -13,7 +13,7 @@ edition = "2021"
 
 [features]
 default = ["put", "blobstore"]
-put = ["reqwest", "url", "tokio", "native-tls"]
+put = ["reqwest", "url", "tokio", "tokio-util", "native-tls"]
 blobstore = ["url", "azure_core", "azure_storage", "azure_storage_blobs", "tokio", "tokio-util", "async-channel", "native-tls"]
 status = ["atty", "indicatif"]
 
@@ -36,7 +36,7 @@ azure_storage = {version="0.9", optional=true}
 azure_storage_blobs = {version="0.9", optional=true}
 indicatif = {version="0.17", optional=true}
 native-tls = {version="0.2", features=["vendored"], optional=true}
-reqwest = {version="0.11", optional=true}
+reqwest = {version="0.11", optional=true, features=["stream"]}
 tokio = {version="1.24", default-features=false, optional=true, features=["fs", "rt-multi-thread"]}
 tokio-util = {version="0.7", features=["codec"], optional=true}
 url = {version="2.3", optional=true}
