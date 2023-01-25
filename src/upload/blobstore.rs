@@ -244,7 +244,7 @@ impl BlobUploader {
 
         let block_list = BlockList { blocks };
 
-        self.client.put_block_list(block_list).into_future().await?;
+        self.client.put_block_list(block_list).await?;
 
         Ok(())
     }
@@ -330,7 +330,6 @@ impl BlobUploader {
             let result = client
                 .put_block(upload_chunk.id, upload_chunk.data)
                 .hash(hash)
-                .into_future()
                 .await;
 
             // as soon as any error is seen (after retrying), bail out and stop other uploaders
