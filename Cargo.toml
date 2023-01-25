@@ -13,9 +13,9 @@ edition = "2021"
 
 [features]
 default = ["put", "blobstore"]
-put = ["reqwest", "url", "tokio", "native-tls"]
-blobstore = ["url", "azure_core", "azure_storage", "azure_storage_blobs", "tokio", "tokio-util", "async-channel", "native-tls"]
-status = ["atty", "indicatif"]
+put = ["dep:reqwest", "dep:url", "dep:tokio", "dep:native-tls"]
+blobstore = ["dep:url", "dep:azure_core", "dep:azure_storage", "dep:azure_storage_blobs", "dep:tokio", "dep:tokio-util", "dep:async-channel", "dep:native-tls"]
+status = ["dep:atty", "dep:indicatif"]
 
 [dependencies]
 byteorder = "1.4"
