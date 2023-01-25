@@ -13,7 +13,7 @@ edition = "2021"
 
 [features]
 default = ["put", "blobstore"]
-put = ["reqwest", "url", "tokio", "native-tls"]
+put = ["reqwest/stream", "url", "tokio", "tokio-util", "native-tls"]
 blobstore = ["url", "azure_core", "azure_storage", "azure_storage_blobs", "tokio", "tokio-util", "async-channel", "native-tls"]
 status = ["atty", "indicatif"]
 
