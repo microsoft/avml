@@ -10,6 +10,7 @@ homepage = "https://github.com/microsoft/avml"
 repository = "https://github.com/microsoft/avml"
 readme = "README.md"
 edition = "2021"
+rust-version = "1.64.0"
 
 [features]
 default = ["put", "blobstore"]
