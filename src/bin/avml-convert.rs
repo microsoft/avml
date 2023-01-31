@@ -22,10 +22,7 @@ fn convert(src: &Path, dst: &Path, compress: bool) -> Result<()> {
     let mut image = image::Image::new(1, src, dst)?;
 
     loop {
-        let current = image
-            .src
-            .seek(SeekFrom::Current(0))
-            .map_err(image::Error::Read)?;
+        let current = image.src.stream_position().map_err(image::Error::Read)?;
         if current >= src_len {
             break;
         }
@@ -58,17 +55,11 @@ fn convert_to_raw(src: &Path, dst: &Path) -> Result<()> {
     let mut image = image::Image::new(1, src, dst)?;
 
     loop {
-        let current = image
-            .src
-            .seek(SeekFrom::Current(0))
-            .map_err(image::Error::Read)?;
+        let current = image.src.stream_position().map_err(image::Error::Read)?;
         if current >= src_len {
             break;
         }
-        let current_dst = image
-            .dst
-            .seek(SeekFrom::Current(0))
-            .map_err(image::Error::Read)?;
+        let current_dst = image.dst.stream_position().map_err(image::Error::Read)?;
 
         let header = image::Header::read(&image.src)?;
         let mut zeros = vec![0; ONE_MB];
