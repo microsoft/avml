@@ -60,7 +60,6 @@ dependencies = [
  "async-channel",
  "atty",
  "azure_core",
- "azure_storage",
  "azure_storage_blobs",
  "byteorder",
  "bytes",
