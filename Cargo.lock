@@ -59,8 +59,8 @@ version = "0.11.0"
 dependencies = [
  "async-channel",
  "atty",
- "azure_core",
- "azure_storage",
+ "azure_core 0.10.0",
+ "azure_storage 0.11.0",
  "azure_storage_blobs",
  "byteorder",
  "bytes",
@@ -109,6 +109,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "azure_core"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32568c56fda7f2f1173430298bddeb507ed44e99bd989ba1156a25534bff5d98"
+dependencies = [
+ "async-trait",
+ "base64 0.21.0",
+ "bytes",
+ "dyn-clone",
+ "futures",
+ "getrandom 0.2.8",
+ "http-types",
+ "log",
+ "paste",
+ "pin-project",
+ "quick-xml",
+ "rand 0.8.5",
+ "reqwest",
+ "rustc_version",
+ "serde",
+ "serde_json",
+ "time",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "azure_storage"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -116,7 +143,7 @@ checksum = "4b5940f60d0cdfe6312e9feb6528c975ba9de061026843b0ded723585b540338"
 dependencies = [
  "RustyXML",
  "async-trait",
- "azure_core",
+ "azure_core 0.10.0",
  "base64 0.13.1",
  "bytes",
  "futures",
@@ -134,14 +161,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "azure_storage"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29747ca7da0f81ea199d1c957bae737bc5bc54502e0f7c00ca7be1894306944a"
+dependencies = [
+ "RustyXML",
+ "async-trait",
+ "azure_core 0.11.0",
+ "bytes",
+ "futures",
+ "hmac",
+ "log",
+ "once_cell",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "sha2",
+ "time",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "azure_storage_blobs"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf7e8d719a89c6079ba6298fc3969acf53a24d590e1f5c1faab6f732e3ddf56b"
 dependencies = [
  "RustyXML",
- "azure_core",
- "azure_storage",
+ "azure_core 0.10.0",
+ "azure_storage 0.10.0",
  "base64 0.13.1",
  "bytes",
  "futures",
@@ -1074,6 +1124,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d0e1ae9e836cc3beddd63db0df682593d7e2d3d891ae8c9083d2113e1744224"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "quick-xml"
+version = "0.28.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5c1a97b1bc42b1d550bfb48d4262153fe400a12bab1511821736f7eac76d7e2"
+dependencies = [
+ "memchr",
+ "serde",
 ]
 
 [[package]]
