@@ -21,7 +21,7 @@ status = ["dep:atty", "dep:indicatif"]
 [dependencies]
 byteorder = "1.4"
 bytes = "1.4"
-clap = {version="4.2", default-features=false, features=["derive", "std", "usage", "error-context", "help"]}
+clap = {version="4.3", default-features=false, features=["derive", "std", "usage", "error-context", "help"]}
 elf = "0.7"
 futures = "0.3"
 http = "0.2"
