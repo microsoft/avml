@@ -323,14 +323,9 @@ impl BlobUploader {
     ) -> Result<()> {
         // the channel will respond with an Err to indicate the channel is closed
         while let Ok(upload_chunk) = receiver.recv().await {
-            let hash = md5::compute(upload_chunk.data.clone());
-
             let chunk_len = upload_chunk.data.len();
 
-            let result = client
-                .put_block(upload_chunk.id, upload_chunk.data)
-                .hash(hash)
-                .await;
+            let result = client.put_block(upload_chunk.id, upload_chunk.data).await;
 
             // as soon as any error is seen (after retrying), bail out and stop other uploaders
             if result.is_err() {
