@@ -162,6 +162,7 @@ dependencies = [
  "bytes",
  "futures",
  "log",
+ "md5",
  "serde",
  "serde_derive",
  "serde_json",
