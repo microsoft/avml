@@ -65,7 +65,7 @@ version = "0.11.4"
 dependencies = [
  "async-channel",
  "atty",
- "azure_core",
+ "azure_core 0.12.0",
  "azure_storage_blobs",
  "byteorder",
  "bytes",
@@ -102,6 +102,31 @@ dependencies = [
  "log",
  "paste",
  "pin-project",
+ "rand 0.8.5",
+ "rustc_version",
+ "serde",
+ "serde_json",
+ "time",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "azure_core"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "86b0f0eea648347e40f5f7f7e6bfea4553bcefad0fbf52044ea339e5ce3aba61"
+dependencies = [
+ "async-trait",
+ "base64 0.21.2",
+ "bytes",
+ "dyn-clone",
+ "futures",
+ "getrandom 0.2.10",
+ "http-types",
+ "log",
+ "paste",
+ "pin-project",
  "quick-xml",
  "rand 0.8.5",
  "reqwest",
@@ -115,13 +140,13 @@ dependencies = [
 
 [[package]]
 name = "azure_storage"
-version = "0.12.0"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac51cec052458f949d230895144f25cb325e61e79f4b6a47f750502888e54b7b"
+checksum = "32d9cfa13ed9acb51cd663e04f343bd550a92b455add96c90de387a9a6bc4dbc"
 dependencies = [
  "RustyXML",
  "async-trait",
- "azure_core",
+ "azure_core 0.13.0",
  "bytes",
  "futures",
  "hmac",
@@ -138,17 +163,16 @@ dependencies = [
 
 [[package]]
 name = "azure_storage_blobs"
-version = "0.12.0"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "faf2a451fefb055410fbc9e26e54a1863d1e930125a4346487e2d2d5f64081cb"
+checksum = "a0002860e01578607f1f5982eac043af671cce5ca0b022eeac3304fa26e0f623"
 dependencies = [
  "RustyXML",
- "azure_core",
+ "azure_core 0.13.0",
  "azure_storage",
  "bytes",
  "futures",
  "log",
- "md5",
  "serde",
  "serde_derive",
  "serde_json",
@@ -1052,9 +1076,9 @@ dependencies = [
 
 [[package]]
 name = "quick-xml"
-version = "0.28.2"
+version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ce5e73202a820a31f8a0ee32ada5e21029c81fd9e3ebf668a40832e4219d9d1"
+checksum = "81b9228215d82c7b61490fec1de287136b5de6f5700f6e58ea9ad61a7964ca51"
 dependencies = [
  "memchr",
  "serde",
