@@ -25,19 +25,18 @@ clap = {version="4.3", default-features=false, features=["derive", "std", "usage
 elf = "0.7"
 futures = "0.3"
 http = "0.2"
-md5 = "0.7"
 snap = "1.1"
 thiserror = "1.0"
 libc = "0.2"
 
 async-channel = {version="1.8", optional=true}
 atty = {version="0.2", optional=true}
-azure_core = {version="0.12", optional=true}
-azure_storage_blobs = {version="0.12", optional=true}
+azure_core = {version="0.13", optional=true}
+azure_storage_blobs = {version="0.13", optional=true}
 indicatif = {version="0.17", optional=true}
 native-tls = {version="0.2", features=["vendored"], optional=true}
 reqwest = {version="0.11", optional=true}
-tokio = {version="1.28", default-features=false, optional=true, features=["fs", "rt-multi-thread"]}
+tokio = {version="1.29", default-features=false, optional=true, features=["fs", "rt-multi-thread"]}
 tokio-util = {version="0.7", features=["codec"], optional=true}
 url = {version="2.4", optional=true}
 
