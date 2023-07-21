@@ -1426,18 +1426,18 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "1.0.42"
+version = "1.0.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8ed1fcd28efec0862cc76ebc8b6e9206585521af7bd3259a987ffc858f89947"
+checksum = "611040a08a0439f8248d1990b111c95baa9c704c805fa1f62104b39655fd7f90"
 dependencies = [
  "thiserror-impl",
 ]
 
 [[package]]
 name = "thiserror-impl"
-version = "1.0.42"
+version = "1.0.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f85e0dcc42d16c4f19503b2dcdb062d2466efc133b12ffef7dbe02e6ee37e991"
+checksum = "090198534930841fab3a5d1bb637cde49e339654e606195f8d9c76eeb081dc96"
 dependencies = [
  "proc-macro2",
  "quote",
