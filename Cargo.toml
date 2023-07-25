@@ -41,7 +41,7 @@ tokio-util = {version="0.7", features=["codec"], optional=true}
 url = {version="2.4", optional=true}
 
 [dev-dependencies]
-insta = {version="1.30", features=["json"]}
+insta = {version="1.31", features=["json"]}
 
 [profile.release]
 opt-level="z"
