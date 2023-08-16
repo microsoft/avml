@@ -1,6 +1,6 @@
 [package]
 name = "avml"
-version = "0.11.4"
+version = "0.12.0"
 license = "MIT"
 description = "A portable volatile memory acquisition tool"
 authors = ["avml@microsoft.com"]
@@ -13,10 +13,11 @@ edition = "2021"
 rust-version = "1.64.0"
 
 [features]
-default = ["put", "blobstore"]
-put = ["dep:reqwest", "reqwest?/stream", "dep:url", "dep:tokio", "dep:tokio-util", "dep:native-tls"]
-blobstore = ["dep:url", "dep:azure_core", "dep:azure_storage_blobs", "dep:tokio", "dep:tokio-util", "dep:async-channel", "dep:native-tls"]
+default = ["put", "blobstore", "native-tls"]
+put = ["dep:reqwest", "reqwest?/stream", "dep:url", "dep:tokio", "dep:tokio-util"]
+blobstore = ["dep:url", "dep:azure_core", "dep:azure_storage_blobs", "dep:tokio", "dep:tokio-util", "dep:async-channel"]
 status = ["dep:atty", "dep:indicatif"]
+native-tls = ["dep:native-tls"]
 
 [dependencies]
 byteorder = "1.4"
