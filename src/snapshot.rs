@@ -238,7 +238,7 @@ impl<'a, 'b> Snapshot<'a, 'b> {
             let kcore_err = try_method!(self.create_source(&Source::ProcKcore));
             let devmem_err = try_method!(self.create_source(&Source::DevMem));
 
-            let reason = vec![String::new(), crash_err, kcore_err, devmem_err].join("\n");
+            let reason = [String::new(), crash_err, kcore_err, devmem_err].join("\n");
 
             return Err(Error::UnableToCreateSnapshot(crate::indent(reason, 4)));
         }

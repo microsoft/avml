@@ -113,17 +113,17 @@ mod tests {
         assert_eq!(result, expected);
 
         let result = merge_ranges(vec![0..3, 3..6, 6..10]);
-        let expected = [0..10];
+        let expected = [0..10;1];
         assert_eq!(result, expected);
     }
 
     #[test]
     fn test_split_ranges() {
-        let result = split_ranges(vec![0..30], 10);
+        let result = split_ranges(vec![0..30; 1], 10);
         let expected = [0..10, 10..20, 20..30];
         assert_eq!(result, expected);
 
-        let result = split_ranges(vec![0..30], 7);
+        let result = split_ranges(vec![0..30; 1], 7);
         let expected = [0..7, 7..14, 14..21, 21..28, 28..30];
         assert_eq!(result, expected);
 
