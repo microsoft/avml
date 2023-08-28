@@ -113,7 +113,7 @@ mod tests {
         assert_eq!(result, expected);
 
         let result = merge_ranges(vec![0..3, 3..6, 6..10]);
-        let expected = [0..10;1];
+        let expected = [0..10; 1];
         assert_eq!(result, expected);
     }
 
