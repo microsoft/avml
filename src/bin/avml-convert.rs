@@ -99,7 +99,7 @@ fn convert_to_raw(src: &Path, dst: &Path) -> Result<()> {
 
 fn convert_from_raw(src: &Path, dst: &Path, compress: bool) -> Result<()> {
     let src_len = metadata(src).map_err(image::Error::Read)?.len();
-    let ranges = split_ranges(vec![0..src_len], image::MAX_BLOCK_SIZE);
+    let ranges = split_ranges(vec![0..src_len; 1], image::MAX_BLOCK_SIZE);
 
     let version = if compress { 2 } else { 1 };
 
