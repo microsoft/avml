@@ -128,7 +128,7 @@ fn disk_usage(path: &Path) -> Result<DiskUsage> {
     unsafe {
         let ret = libc::statfs64(cstr.as_ptr(), &mut statfs);
         if ret < 0 {
-            return Err(Error::Disk(std::io::Error::last_os_error()))?;
+            Err(Error::Disk(std::io::Error::last_os_error()))?;
         }
     }
 
