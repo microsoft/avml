@@ -32,12 +32,12 @@ libc = "0.2"
 
 async-channel = {version="2.1", optional=true}
 atty = {version="0.2", optional=true}
-azure_core = {version="0.17", optional=true}
-azure_storage_blobs = {version="0.17", optional=true}
+azure_core = {version="0.18", optional=true}
+azure_storage_blobs = {version="0.18", optional=true}
 indicatif = {version="0.17", optional=true}
 native-tls = {version="0.2", features=["vendored"], optional=true}
 reqwest = {version="0.11", optional=true}
-tokio = {version="1.34", default-features=false, optional=true, features=["fs", "rt-multi-thread"]}
+tokio = {version="1.35", default-features=false, optional=true, features=["fs", "rt-multi-thread"]}
 tokio-util = {version="0.7", features=["codec"], optional=true}
 url = {version="2.5", optional=true}
 
