@@ -336,12 +336,12 @@ impl<'a, 'b> Snapshot<'a, 'b> {
         segments.sort_by(|a, b| a.p_vaddr.cmp(&b.p_vaddr));
 
         let first_vaddr = segments
-            .get(0)
+            .first()
             .ok_or_else(|| Error::UnableToCreateSnapshot("no initial addresses".to_string()))?
             .p_vaddr;
         let first_start = self
             .memory_ranges
-            .get(0)
+            .first()
             .ok_or_else(|| Error::UnableToCreateSnapshot("no initial memory range".to_string()))?
             .start;
         let start = first_vaddr - first_start;
