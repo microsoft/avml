@@ -21,7 +21,7 @@ native-tls = ["dep:native-tls"]
 
 [dependencies]
 byteorder = "1.5"
-bytes = "1.5"
+bytes = "1.6"
 clap = {version="4.5", default-features=false, features=["derive", "std", "usage", "error-context", "help"]}
 elf = "0.7"
 futures = "0.3"
