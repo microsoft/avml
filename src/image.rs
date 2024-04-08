@@ -4,16 +4,14 @@
 use crate::write_counter::Counter;
 use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
 use snap::write::FrameEncoder;
+#[cfg(target_family = "unix")]
+use std::os::unix::fs::OpenOptionsExt;
 use std::{
-    convert::TryFrom,
     fs::{File, OpenOptions},
-    io::{prelude::*, Cursor, Seek, SeekFrom},
+    io::{Cursor, Read, Seek, SeekFrom, Write},
     ops::Range,
     path::Path,
 };
-
-#[cfg(target_family = "unix")]
-use std::os::unix::fs::OpenOptionsExt;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {

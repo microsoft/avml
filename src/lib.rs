@@ -15,13 +15,11 @@ mod snapshot;
 mod upload;
 mod write_counter;
 
+pub use crate::snapshot::{Snapshot, Source};
 #[cfg(feature = "blobstore")]
 pub use crate::upload::blobstore::{BlobUploader, DEFAULT_CONCURRENCY};
-
 #[cfg(feature = "put")]
 pub use crate::upload::http::put;
-
-pub use crate::snapshot::{Snapshot, Source};
 
 pub const ONE_MB: usize = 1024 * 1024;
 

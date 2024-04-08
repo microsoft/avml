@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-use std::{fs::OpenOptions, io::prelude::*, ops::Range, path::Path};
+use std::{fs::OpenOptions, io::Read, ops::Range, path::Path};
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
