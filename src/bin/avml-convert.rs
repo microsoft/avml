@@ -11,9 +11,8 @@ use avml::{image, iomem::split_ranges, Error, Result, Snapshot, Source, ONE_MB};
 use clap::{Parser, ValueEnum};
 use snap::read::FrameDecoder;
 use std::{
-    convert::TryFrom,
     fs::metadata,
-    io::{prelude::*, SeekFrom},
+    io::{Seek, SeekFrom, Write},
     path::{Path, PathBuf},
 };
 

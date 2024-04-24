@@ -80,7 +80,7 @@ pub enum Source {
     /// Provides a virtual ELF coredump of kernel memory.  This can be used to
     /// access physical memory.
     ///
-    /// If LOCKDOWN_KCORE is set in the kernel, then /proc/kcore may exist but
+    /// If `LOCKDOWN_KCORE` is set in the kernel, then /proc/kcore may exist but
     /// is either inaccessible or doesn't allow access to all of the kernel
     /// memory.
     #[value(name = "/proc/kcore")]

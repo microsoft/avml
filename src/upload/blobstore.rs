@@ -4,10 +4,10 @@
 use crate::{upload::status::Status, ONE_MB};
 use async_channel::{bounded, Receiver, Sender};
 use azure_core::error::Error as AzureError;
-use azure_storage_blobs::prelude::*;
+use azure_storage_blobs::prelude::{BlobBlockType, BlobClient, BlockId, BlockList};
 use bytes::Bytes;
 use futures::future::try_join_all;
-use std::{cmp, marker::Unpin, path::Path};
+use std::{cmp, path::Path};
 use tokio::{
     fs::File,
     io::{AsyncRead, AsyncReadExt},
