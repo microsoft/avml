@@ -22,7 +22,7 @@ native-tls = ["dep:native-tls"]
 [dependencies]
 byteorder = "1.5"
 bytes = "1.6"
-clap = {version="4.5", default-features=false, features=["derive", "std", "usage", "error-context", "help"]}
+clap = {version="4.4", default-features=false, features=["derive", "std", "usage", "error-context", "help"]}
 elf = "0.7"
 futures = "0.3"
 http = "1.1"
@@ -32,8 +32,8 @@ libc = "0.2"
 
 async-channel = {version="2.2", optional=true}
 atty = {version="0.2", optional=true}
-azure_core = {version="0.19", optional=true}
-azure_storage_blobs = {version="0.19", optional=true}
+azure_core = {version="0.20", optional=true}
+azure_storage_blobs = {version="0.20", optional=true}
 indicatif = {version="0.17", optional=true}
 native-tls = {version="0.2", features=["vendored"], optional=true}
 reqwest = {version="0.12", optional=true}
