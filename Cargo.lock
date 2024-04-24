@@ -48,9 +48,9 @@ dependencies = [
 
 [[package]]
 name = "async-channel"
-version = "2.2.0"
+version = "2.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f28243a43d821d11341ab73c80bed182dc015c514b951616cf79bd4af39af0c3"
+checksum = "136d4d23bcc79e27423727b36823d86233aad06dfea531837b038394d11e9928"
 dependencies = [
  "concurrent-queue",
  "event-listener 5.0.0",
@@ -102,7 +102,7 @@ checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 name = "avml"
 version = "0.14.0"
 dependencies = [
- "async-channel 2.2.0",
+ "async-channel 2.2.1",
  "atty",
  "azure_core",
  "azure_storage_blobs",
