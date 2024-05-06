@@ -16,7 +16,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4.1.4
+    - uses: actions/checkout@v4.1.5
     - name: build
       run: eng/ci.sh
     - name: Run tests
@@ -37,7 +37,7 @@ jobs:
       run: |
         git config --global core.autocrlf false
         git config --global core.eol lf
-    - uses: actions/checkout@v4.1.4
+    - uses: actions/checkout@v4.1.5
     - name: build avml-convert
       run: cargo build --release --bin avml-convert --locked
     - name: build avml-upload
