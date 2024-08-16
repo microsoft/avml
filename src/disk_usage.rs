@@ -80,7 +80,6 @@ fn check_max_usage_percentage(
 /// following edge condition:
 /// 1. The value must be less than or equal to the const `EXCESSIVE_VALUE`
 #[allow(clippy::cast_precision_loss)]
-/// convert u64 into f64
 fn u64_to_f64(value: u64) -> Result<f64> {
     if value > EXCESSIVE_VALUE {
         return Err(Error::Other(
