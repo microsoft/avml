@@ -16,7 +16,7 @@ rust-version = "1.70.0"
 default = ["put", "blobstore", "native-tls"]
 put = ["dep:reqwest", "reqwest?/stream", "dep:url", "dep:tokio", "dep:tokio-util"]
 blobstore = ["dep:url", "dep:azure_core", "dep:azure_storage_blobs", "dep:tokio", "dep:tokio-util", "dep:async-channel"]
-status = ["dep:atty", "dep:indicatif"]
+status = ["dep:indicatif"]
 native-tls = ["dep:native-tls"]
 
 [dependencies]
@@ -31,7 +31,6 @@ thiserror = "2.0"
 libc = "0.2"
 
 async-channel = {version="2.3", optional=true}
-atty = {version="0.2", optional=true}
 azure_core = {version="0.21", optional=true}
 azure_storage_blobs = {version="0.21", optional=true}
 indicatif = {version="0.17", optional=true}
