@@ -13,6 +13,12 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4.2.2
+    - name: lint
+      run: eng/lint.sh
   build:
     runs-on: ubuntu-latest
     steps:
