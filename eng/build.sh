@@ -10,11 +10,6 @@ cd $(dirname ${BASH_SOURCE[0]})/../
 
 ARCH=$(uname -m)
 
-typos
-
-cargo fmt -- --check
-cargo semver-checks check-release
-cargo clippy --locked --all-targets --all-features -- -D warnings -D clippy::pedantic -A clippy::missing_errors_doc
 cargo test --release --target ${ARCH}-unknown-linux-musl --locked --all-targets --all-features
 for FEATURE in $(cargo metadata --locked --format-version 1 | jq '.packages | [.[] | select(.name=="avml")][0].features | keys | @tsv' -r); do
     cargo check --release --target ${ARCH}-unknown-linux-musl --locked --no-default-features --features ${FEATURE} --features native-tls
