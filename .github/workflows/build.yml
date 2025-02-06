@@ -13,10 +13,11 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  x64:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4.2.2
+    - uses: Swatinem/rust-cache@v2
     - name: build
       run: eng/ci.sh
     - name: Run tests
@@ -24,7 +25,25 @@ jobs:
     - name: upload artifacts
       uses: actions/upload-artifact@v4.6.0
       with:
-        name: build-artifacts
+        name: linux-x86-64-artifacts
+        path: |
+          target/*/release/avml
+          target/*/release/avml-minimal
+          target/*/release/avml-convert
+          target/*/release/avml-upload
+  arm64:
+    runs-on: ubuntu-22.04-arm
+    steps:
+    - uses: actions/checkout@v4.2.2
+    - uses: Swatinem/rust-cache@v2
+    - name: build
+      run: eng/ci.sh
+    - name: Run tests
+      run: sudo target/aarch64-unknown-linux-musl/release/avml --compress output.lime
+    - name: upload artifacts
+      uses: actions/upload-artifact@v4.6.0
+      with:
+        name: linux-aarch64-artifacts
         path: |
           target/*/release/avml
           target/*/release/avml-minimal
@@ -38,6 +57,7 @@ jobs:
         git config --global core.autocrlf false
         git config --global core.eol lf
     - uses: actions/checkout@v4.2.2
+    - uses: Swatinem/rust-cache@v2
     - name: build avml-convert
       run: cargo build --release --bin avml-convert --locked
     - name: build avml-upload
