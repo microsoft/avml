@@ -3,6 +3,8 @@
 
 #[cfg(all(feature = "status", any(feature = "blobstore", feature = "put")))]
 use indicatif::{ProgressBar, ProgressFinish, ProgressStyle};
+#[cfg(all(feature = "status", any(feature = "blobstore", feature = "put")))]
+use std::io::{stdin, IsTerminal};
 
 #[cfg(all(feature = "status", any(feature = "blobstore", feature = "put")))]
 #[derive(Clone)]
@@ -15,7 +17,7 @@ pub struct Status {
 impl Status {
     pub fn new(total: Option<u64>) -> Self {
         let size = total.unwrap_or(0);
-        let bar = if atty::is(atty::Stream::Stdin) {
+        let bar = if stdin().is_terminal() {
             Some(
                 ProgressBar::new(size)
                     .with_style(
