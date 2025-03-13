@@ -242,15 +242,17 @@ mod tests {
         )?;
 
         // disk is already past the max allowed, should fail even with a tiny addition
-        assert!(check_max_usage_percentage(
-            1,
-            &DiskUsage {
-                total: 1000,
-                used: 910
-            },
-            10.0
-        )
-        .is_err());
+        assert!(
+            check_max_usage_percentage(
+                1,
+                &DiskUsage {
+                    total: 1000,
+                    used: 910
+                },
+                10.0
+            )
+            .is_err()
+        );
 
         Ok(())
     }

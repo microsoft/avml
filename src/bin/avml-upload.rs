@@ -7,7 +7,7 @@
 #![deny(clippy::manual_assert)]
 #![deny(clippy::indexing_slicing)]
 
-use avml::{put, BlobUploader, Error, DEFAULT_CONCURRENCY};
+use avml::{BlobUploader, DEFAULT_CONCURRENCY, Error, put};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use tokio::runtime::Runtime;

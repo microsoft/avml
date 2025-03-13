@@ -4,7 +4,7 @@
 #[cfg(all(feature = "status", any(feature = "blobstore", feature = "put")))]
 use indicatif::{ProgressBar, ProgressFinish, ProgressStyle};
 #[cfg(all(feature = "status", any(feature = "blobstore", feature = "put")))]
-use std::io::{stdin, IsTerminal as _};
+use std::io::{IsTerminal as _, stdin};
 
 #[cfg(all(feature = "status", any(feature = "blobstore", feature = "put")))]
 #[derive(Clone)]

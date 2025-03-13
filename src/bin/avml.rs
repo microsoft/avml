@@ -9,7 +9,7 @@
 
 #[cfg(any(feature = "blobstore", feature = "put"))]
 use avml::Error;
-use avml::{iomem, Result, Snapshot, Source};
+use avml::{Result, Snapshot, Source, iomem};
 use clap::Parser;
 use std::{num::NonZeroU64, ops::Range, path::PathBuf};
 #[cfg(any(feature = "blobstore", feature = "put"))]
