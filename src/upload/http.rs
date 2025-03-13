@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 use crate::upload::status::Status;
-use futures::stream::StreamExt;
+use futures::stream::StreamExt as _;
 use reqwest::{Body, Client, StatusCode};
 use std::path::{Path, PathBuf};
 use tokio::fs::File;

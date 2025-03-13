@@ -3,7 +3,7 @@
 
 use crate::snapshot::{Error, Result};
 use core::{mem::zeroed, num::NonZeroU64, ops::Range};
-use std::{ffi::CString, os::unix::ffi::OsStrExt, path::Path};
+use std::{ffi::CString, os::unix::ffi::OsStrExt as _, path::Path};
 
 /// Assume roughly 100k per block extra overhead
 ///
