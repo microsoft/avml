@@ -2,11 +2,7 @@
 // Licensed under the MIT License.
 
 use core::{num::ParseIntError, ops::Range};
-use std::{
-    fs::OpenOptions,
-    io::{Error as IoError, Read},
-    path::Path,
-};
+use std::{fs::read_to_string, io::Error as IoError, path::Path};
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -29,9 +25,7 @@ pub fn parse() -> Result<Vec<Range<u64>>, Error> {
 }
 
 fn parse_file(path: &Path) -> Result<Vec<Range<u64>>, Error> {
-    let mut f = OpenOptions::new().read(true).open(path)?;
-    let mut buffer = String::new();
-    f.read_to_string(&mut buffer)?;
+    let buffer = read_to_string(path)?;
 
     let mut ranges = Vec::new();
     for line in buffer.split_terminator('\n') {
