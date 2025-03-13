@@ -63,6 +63,13 @@ pub struct Block {
 }
 
 impl Header {
+    /// Reads a header from the provided file.
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - The header cannot be read from the file
+    /// - The magic number or version is invalid
+    /// - The padding value is not zero
     pub fn read(mut src: &File) -> Result<Self> {
         let magic = src
             .read_u32::<LittleEndian>()
@@ -105,6 +112,12 @@ impl Header {
         Ok(bytes)
     }
 
+    /// Writes the header to the destination writer.
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - The version is not supported
+    /// - The header cannot be written to the destination
     pub fn write<W>(&self, dst: &mut W) -> Result<()>
     where
         W: Write,
@@ -115,6 +128,12 @@ impl Header {
     }
 }
 
+/// Copies data from a source reader to a destination writer.
+///
+/// # Errors
+/// Returns an error if:
+/// - Reading from the source fails
+/// - Writing to the destination fails
 pub fn copy<R, W>(mut size: usize, src: &mut R, dst: &mut W) -> Result<()>
 where
     R: Read,
@@ -220,6 +239,13 @@ where
     }
 }
 
+/// Copies a memory block from the source reader to the destination writer.
+///
+/// # Errors
+/// Returns an error if:
+/// - Reading from the source fails
+/// - Writing to the destination fails
+/// - Size conversion from u64 to usize fails
 pub fn copy_block<R, W>(mut header: Header, src: &mut R, dst: &mut W) -> Result<()>
 where
     R: Read,
@@ -277,6 +303,12 @@ impl Image {
             .map_err(Error::Write)
     }
 
+    /// Creates a new Image with the specified version, source filename, and destination filename.
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - The source file cannot be opened for reading
+    /// - The destination file cannot be created or opened for writing
     pub fn new(version: u32, src_filename: &Path, dst_filename: &Path) -> Result<Self> {
         let src = OpenOptions::new()
             .read(true)
@@ -288,6 +320,10 @@ impl Image {
         Ok(Self { version, src, dst })
     }
 
+    /// Writes multiple memory blocks to the destination file.
+    ///
+    /// # Errors
+    /// Returns an error if writing any block fails
     pub fn write_blocks(&mut self, blocks: &[Block]) -> Result<()> {
         for block in blocks {
             self.write_block(block)

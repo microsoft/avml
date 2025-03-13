@@ -208,16 +208,23 @@ impl<'a, 'b> Snapshot<'a, 'b> {
     }
 
     fn create_source(&self, src: &Source) -> Result<()> {
-        match src {
+        match *src {
             Source::ProcKcore => self.kcore(),
             Source::DevCrash => self.phys(Path::new("/dev/crash")),
             Source::DevMem => self.phys(Path::new("/dev/mem")),
-            Source::Raw(s) => self.phys(s),
+            Source::Raw(ref s) => self.phys(s),
         }
         .map_err(|e| Error::UnableToCreateSnapshotFromSource(Box::new(e), src.clone()))
     }
 
     /// Create a memory snapshot
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - No source is available for creating the snapshot
+    /// - There is a failure reading from the specified source
+    /// - The estimated disk usage exceeds the specified limits
+    /// - Failed to create or write to the destination file
     pub fn create(&self) -> Result<()> {
         if let Some(src) = self.source {
             self.create_source(src)?;

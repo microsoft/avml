@@ -22,6 +22,12 @@ pub enum Error {
 }
 
 /// Upload a file via HTTP PUT
+///
+/// # Errors
+/// Returns an error if:
+/// - The file cannot be opened or read
+/// - There is a failure making the HTTP request
+/// - The server returns an unexpected status code
 #[cfg(feature = "put")]
 pub async fn put(filename: &Path, url: &Url) -> Result<(), Error> {
     let file = File::open(&filename)

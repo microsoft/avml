@@ -170,6 +170,11 @@ pub struct BlobUploader {
 }
 
 impl BlobUploader {
+    /// Create a new ``BlobUploader`` from a SAS URL.
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - The URL cannot be parsed as a valid Azure SAS URL
     pub fn new(sas: &Url) -> Result<Self> {
         let blob_client = BlobClient::from_sas_url(sas)?;
         Ok(Self::with_blob_client(blob_client))
@@ -222,9 +227,16 @@ impl BlobUploader {
     }
 
     /// Upload a file to Azure Blob Store using a fully qualified SAS token
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - The file cannot be opened or read
+    /// - The file size cannot be converted to a usize
+    /// - The file is too large for Azure Blob Storage
+    /// - There is a failure during the upload process
+    /// - There is a failure finalizing the block list
     pub async fn upload_file(mut self, filename: &Path) -> Result<()> {
         let file = File::open(filename).await?;
-
         let file_size = file
             .metadata()
             .await?
