@@ -105,31 +105,19 @@ pub fn split_ranges(ranges: Vec<Range<u64>>, max_size: u64) -> Vec<Range<u64>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use insta::assert_json_snapshot;
 
     #[test]
     fn test_merge_ranges() {
-        let result = merge_ranges(vec![0..3, 3..6, 7..10, 12..15]);
-        let expected = [0..6, 7..10, 12..15];
-        assert_eq!(result, expected);
-
-        let result = merge_ranges(vec![0..3, 3..6, 6..10]);
-        let expected = [0..10; 1];
-        assert_eq!(result, expected);
+        assert_json_snapshot!(merge_ranges(vec![0..3, 3..6, 7..10, 12..15]));
+        assert_json_snapshot!(merge_ranges(vec![0..3, 3..6, 6..10]));
     }
 
     #[test]
     fn test_split_ranges() {
-        let result = split_ranges(vec![0..30; 1], 10);
-        let expected = [0..10, 10..20, 20..30];
-        assert_eq!(result, expected);
-
-        let result = split_ranges(vec![0..30; 1], 7);
-        let expected = [0..7, 7..14, 14..21, 21..28, 28..30];
-        assert_eq!(result, expected);
-
-        let result = split_ranges(vec![0..10, 10..20, 20..30], 7);
-        let expected = [0..7, 7..10, 10..17, 17..20, 20..27, 27..30];
-        assert_eq!(result, expected);
+        assert_json_snapshot!(split_ranges(vec![0..30; 1], 10));
+        assert_json_snapshot!(split_ranges(vec![0..30; 1], 7));
+        assert_json_snapshot!(split_ranges(vec![0..10, 10..20, 20..30], 7));
     }
 
     #[test]

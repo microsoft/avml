@@ -6,6 +6,7 @@
 #![deny(clippy::panic)]
 #![deny(clippy::manual_assert)]
 #![deny(clippy::indexing_slicing)]
+#![deny(clippy::shadow_unrelated)]
 
 #[cfg(target_family = "unix")]
 mod disk_usage;

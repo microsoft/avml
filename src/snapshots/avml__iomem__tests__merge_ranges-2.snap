@@ -1,0 +1,10 @@
+---
+source: src/iomem.rs
+expression: "merge_ranges(vec![0..3, 3..6, 6..10])"
+---
+[
+  {
+    "start": 0,
+    "end": 10
+  }
+]
