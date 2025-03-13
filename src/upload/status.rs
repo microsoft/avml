@@ -17,20 +17,16 @@ pub struct Status {
 impl Status {
     pub fn new(total: Option<u64>) -> Self {
         let size = total.unwrap_or(0);
-        let bar = if stdin().is_terminal() {
-            Some(
-                ProgressBar::new(size)
-                    .with_style(
-                        #[allow(clippy::expect_used)]
-                        ProgressStyle::default_bar()
-                            .template("{bytes} ({bytes_per_sec})")
-                            .expect("progress bar build failed"),
-                    )
-                    .with_finish(ProgressFinish::AndLeave),
-            )
-        } else {
-            None
-        };
+        let bar = stdin().is_terminal().then(|| {
+            ProgressBar::new(size)
+                .with_style(
+                    #[allow(clippy::expect_used)]
+                    ProgressStyle::default_bar()
+                        .template("{bytes} ({bytes_per_sec})")
+                        .expect("progress bar build failed"),
+                )
+                .with_finish(ProgressFinish::AndLeave)
+        });
         Self { bar, total }
     }
 
