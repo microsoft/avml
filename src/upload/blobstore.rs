@@ -6,8 +6,9 @@ use async_channel::{bounded, Receiver, Sender};
 use azure_core::error::Error as AzureError;
 use azure_storage_blobs::prelude::{BlobBlockType, BlobClient, BlockId, BlockList};
 use bytes::Bytes;
+use core::cmp;
 use futures::future::try_join_all;
-use std::{cmp, path::Path};
+use std::path::Path;
 use tokio::{
     fs::File,
     io::{AsyncRead, AsyncReadExt},
@@ -35,7 +36,7 @@ pub enum Error {
     SizeConversion,
 }
 
-type Result<T> = std::result::Result<T, Error>;
+type Result<T> = core::result::Result<T, Error>;
 
 /// Maximum number of blocks
 ///

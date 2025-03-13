@@ -68,7 +68,7 @@ struct Config {
 
 const PERCENTAGE: Range<f64> = 0.01..100.0;
 
-fn disk_usage_percentage(s: &str) -> std::result::Result<f64, String> {
+fn disk_usage_percentage(s: &str) -> core::result::Result<f64, String> {
     let value = s
         .parse()
         .map_err(|_| format!("`{s}` isn't a valid value"))?;
