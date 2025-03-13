@@ -96,11 +96,11 @@ pub enum Source {
 
 impl FmtDisplay for Source {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        match self {
+        match *self {
             Self::DevCrash => write!(f, "/dev/crash"),
             Self::DevMem => write!(f, "/dev/mem"),
             Self::ProcKcore => write!(f, "/proc/kcore"),
-            Self::Raw(path) => write!(f, "{}", path.display()),
+            Self::Raw(ref path) => write!(f, "{}", path.display()),
         }
     }
 }
@@ -136,11 +136,10 @@ macro_rules! try_method {
         match $func {
             Ok(x) => return Ok(x),
             Err(err) => {
-                if matches!(
-                    err,
-                    Error::UnableToCreateSnapshotFromSource(ref x, _) if matches!(x.as_ref(), Error::DiskUsageEstimateExceeded{..}),
-                ) {
-                    return Err(err);
+                if let Error::UnableToCreateSnapshotFromSource(ref x, _) = err {
+                    if let Error::DiskUsageEstimateExceeded { .. } = **x {
+                        return Err(err);
+                    }
                 }
                 crate::indent(format!("{:?}", err), 4)
             }

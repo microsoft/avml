@@ -41,13 +41,11 @@ pub async fn put(filename: &Path, url: &Url) -> Result<(), Error> {
         .len();
 
     let status = Status::new(Some(size));
-
     let stream = FramedRead::new(file, BytesCodec::new()).inspect(move |x| {
-        if let Ok(x) = x {
-            status.inc(x.len());
+        if let Ok(ref bytes) = *x {
+            status.inc(bytes.len());
         }
     });
-
     let body = Body::wrap_stream(stream);
 
     let client = Client::new();

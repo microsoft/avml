@@ -31,7 +31,7 @@ impl Status {
     }
 
     pub fn inc(&self, n: usize) {
-        if let Some(bar) = &self.bar {
+        if let Some(ref bar) = self.bar {
             bar.inc(n as u64);
             if self.total.is_none() {
                 bar.set_length(bar.position());
