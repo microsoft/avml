@@ -8,18 +8,21 @@ use std::{fs::read_to_string, io::Error as IoError, path::Path};
 pub enum Error {
     #[error("unable to read from /proc/iomem")]
     Io(#[from] IoError),
-
     #[error("unable to parse value")]
     Parse(#[from] ParseIntError),
-
     #[error("unable to parse line: {0}")]
     ParseLine(String),
-
     #[error("need CAP_SYS_ADMIN to read /proc/iomem")]
     PermissionDenied,
 }
 
 /// Parse /proc/iomem and return System RAM memory ranges
+///
+/// # Errors
+/// Returns an error if:
+/// - Failed to read the /proc/iomem file
+/// - Failed to parse memory ranges from the file content
+/// - Permission denied when trying to read /proc/iomem (requires `CAP_SYS_ADMIN`)
 pub fn parse() -> Result<Vec<Range<u64>>, Error> {
     parse_file(Path::new("/proc/iomem"))
 }
