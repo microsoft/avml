@@ -7,6 +7,7 @@
 #![deny(clippy::manual_assert)]
 #![deny(clippy::indexing_slicing)]
 #![deny(clippy::if_then_some_else_none)]
+#![deny(clippy::std_instead_of_core)]
 
 #[cfg(target_family = "unix")]
 mod disk_usage;
@@ -21,6 +22,8 @@ pub use crate::snapshot::{Snapshot, Source};
 pub use crate::upload::blobstore::{BlobUploader, DEFAULT_CONCURRENCY};
 #[cfg(feature = "put")]
 pub use crate::upload::http::put;
+use core::fmt::{Debug as FmtDebug, Formatter, Result as FmtResult};
+use std::{error::Error as StdError, io::Error as IoError};
 
 pub const ONE_MB: usize = 1024 * 1024;
 
@@ -45,22 +48,19 @@ pub enum Error {
 
     #[cfg(any(feature = "blobstore", feature = "put"))]
     #[error("tokio runtime error: {0}")]
-    Tokio(#[source] std::io::Error),
+    Tokio(#[source] IoError),
 
     #[cfg(any(feature = "blobstore", feature = "put"))]
     #[error("unable to remove snapshot")]
-    RemoveSnapshot(#[source] std::io::Error),
+    RemoveSnapshot(#[source] IoError),
 
     #[error("no conversion required")]
     NoConversionRequired,
 }
 
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = core::result::Result<T, Error>;
 
-pub(crate) fn format_error(
-    e: &impl std::error::Error,
-    f: &mut std::fmt::Formatter,
-) -> std::fmt::Result {
+pub(crate) fn format_error(e: &impl StdError, f: &mut Formatter) -> FmtResult {
     write!(f, "error: {e}")?;
 
     let mut source = e.source();
@@ -78,8 +78,8 @@ pub(crate) fn format_error(
     Ok(())
 }
 
-impl std::fmt::Debug for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl FmtDebug for Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         format_error(self, f)
     }
 }
