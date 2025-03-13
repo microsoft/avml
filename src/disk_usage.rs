@@ -22,7 +22,7 @@ struct DiskUsage {
 ///
 /// This is a best effort attempt to estimate the disk usage of a snapshot and
 /// validate the snapshot will fit in the configured parameters.
-pub(crate) fn check(
+pub fn check(
     image_path: &Path,
     memory_ranges: &[Range<u64>],
     max_disk_usage: Option<NonZeroU64>,

@@ -53,7 +53,7 @@ impl std::fmt::Debug for Error {
     }
 }
 
-pub(crate) type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Clone, ValueEnum)]
 pub enum Source {
