@@ -80,7 +80,7 @@ fn check_max_usage_percentage(
 /// `TryInto<f64> for u64` is not implemented.  This tries to be mindful of the
 /// following edge condition:
 /// 1. The value must be less than or equal to the const `EXCESSIVE_VALUE`
-#[allow(clippy::cast_precision_loss)]
+#[allow(clippy::cast_precision_loss, clippy::as_conversions)]
 fn u64_to_f64(value: u64) -> Result<f64> {
     if value > EXCESSIVE_VALUE {
         return Err(Error::Other(
@@ -97,7 +97,11 @@ fn u64_to_f64(value: u64) -> Result<f64> {
 /// following edge conditions:
 /// 1. The value must be a signed positive value
 /// 2. The value is explicitly truncated and clamped to the integer value
-#[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+#[allow(
+    clippy::cast_sign_loss,
+    clippy::cast_possible_truncation,
+    clippy::as_conversions
+)]
 fn f64_to_u64(value: f64) -> Result<u64> {
     if !value.is_sign_positive() {
         return Err(Error::Other(
