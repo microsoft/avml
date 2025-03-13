@@ -10,7 +10,7 @@ use futures::future::try_join_all;
 use std::{cmp, path::Path};
 use tokio::{
     fs::File,
-    io::{AsyncRead, AsyncReadExt},
+    io::{AsyncRead, AsyncReadExt as _},
 };
 use url::Url;
 

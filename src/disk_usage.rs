@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 use crate::snapshot::{Error, Result};
-use std::{ffi::CString, num::NonZeroU64, ops::Range, os::unix::ffi::OsStrExt, path::Path};
+use std::{ffi::CString, num::NonZeroU64, ops::Range, os::unix::ffi::OsStrExt as _, path::Path};
 
 /// Assume roughly 100k per block extra overhead
 ///
