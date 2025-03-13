@@ -6,6 +6,7 @@
 #![deny(clippy::panic)]
 #![deny(clippy::manual_assert)]
 #![deny(clippy::indexing_slicing)]
+#![deny(clippy::shadow_unrelated)]
 #![deny(clippy::std_instead_of_core)]
 
 #[cfg(target_family = "unix")]
