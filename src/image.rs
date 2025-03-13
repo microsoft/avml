@@ -318,7 +318,7 @@ mod tests {
     use core::ops::Range;
 
     #[test]
-    fn encode_header() {
+    fn encode_header_v1() {
         let expected = b"\x45\x4d\x69\x4c\x01\x00\x00\x00\x00\x10\x00\x00\x00\x00\x00\x00\
                          \x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
         let header = super::Header {
@@ -329,7 +329,10 @@ mod tests {
             version: 1,
         };
         assert!(matches!(header.encode(), Ok(x) if x == *expected));
+    }
 
+    #[test]
+    fn encode_header_v2() {
         let expected = b"\x41\x56\x4d\x4c\x02\x00\x00\x00\x00\x10\x00\x00\x00\x00\x00\x00\
                          \x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
         let header = super::Header {

@@ -1,12 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#![deny(clippy::undocumented_unsafe_blocks)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]
 #![deny(clippy::manual_assert)]
 #![deny(clippy::indexing_slicing)]
 #![deny(clippy::redundant_pub_crate)]
+#![deny(clippy::if_then_some_else_none)]
+#![deny(clippy::shadow_unrelated)]
 #![deny(clippy::std_instead_of_core)]
 
 #[cfg(target_family = "unix")]

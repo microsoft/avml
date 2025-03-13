@@ -121,15 +121,16 @@ fn estimate(ranges: &[Range<u64>]) -> u64 {
 }
 
 fn disk_usage(path: &Path) -> Result<DiskUsage> {
-    let cstr = CString::new(path.as_os_str().as_bytes())
+    let path_as_cstr = CString::new(path.as_os_str().as_bytes())
         .map_err(|e| Error::Other("unable to convert path to CString", e.to_string()))?;
 
+    // SAFETY: this is the only way to initialize the statfs64 struct
     let mut statfs: libc::statfs64 = unsafe { zeroed() };
-    unsafe {
-        let ret = libc::statfs64(cstr.as_ptr(), &mut statfs);
-        if ret < 0 {
-            Err(Error::Disk(std::io::Error::last_os_error()))?;
-        }
+    // SAFETY: calling statfs64 is ok as long as the path is valid
+    let ret = unsafe { libc::statfs64(path_as_cstr.as_ptr(), &mut statfs) };
+
+    if ret < 0 {
+        return Err(Error::Disk(std::io::Error::last_os_error()));
     }
 
     let f_bsize: u64 = statfs
