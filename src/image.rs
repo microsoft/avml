@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 use crate::write_counter::Counter;
-use core::ops::Range;
 use byteorder::{ByteOrder as _, LittleEndian, ReadBytesExt as _};
+use core::ops::Range;
 use snap::write::FrameEncoder;
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::OpenOptionsExt as _;
