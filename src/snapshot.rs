@@ -56,7 +56,7 @@ impl FmtDebug for Error {
     }
 }
 
-pub(crate) type Result<T> = core::result::Result<T, Error>;
+pub type Result<T> = core::result::Result<T, Error>;
 
 #[derive(Debug, Clone, ValueEnum)]
 pub enum Source {
