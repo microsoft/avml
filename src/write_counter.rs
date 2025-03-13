@@ -45,19 +45,20 @@ mod tests {
     use std::io::Cursor;
 
     #[test]
-    fn encode_header() {
+    fn encode_header() -> Result<()> {
         let data = "hello world".as_bytes();
 
         let buf = Cursor::new(vec![]);
         let mut counter = Counter::new(buf);
 
-        assert!(counter.write_all(data).is_ok());
+        counter.write_all(data)?;
         assert_eq!(counter.count(), data.len());
         assert_eq!(counter.into_inner().into_inner(), data);
+        Ok(())
     }
 
     #[test]
-    fn encode_snap() {
+    fn encode_snap() -> Result<()> {
         let size = 1000;
         let many_a = "A".repeat(size).into_bytes();
 
@@ -66,7 +67,7 @@ mod tests {
             let mut counter = Counter::new(cursor);
             {
                 let mut snap = FrameEncoder::new(&mut counter);
-                assert!(snap.write_all(&many_a).is_ok());
+                snap.write_all(&many_a)?;
             }
             // verify we had some compression here...
             assert!(counter.count() < size);
@@ -79,11 +80,12 @@ mod tests {
             let mut counter = Counter::new(decoded);
             {
                 let mut snap = FrameDecoder::new(&mut compressed);
-                assert!(std::io::copy(&mut snap, &mut counter).is_ok());
+                std::io::copy(&mut snap, &mut counter)?;
             }
             assert_eq!(counter.count(), size, "verify decoded size");
             counter.into_inner().into_inner()
         };
         assert_eq!(many_a, result, "verify decoded byte are equal");
+        Ok(())
     }
 }

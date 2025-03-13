@@ -149,6 +149,8 @@ fn disk_usage(path: &Path) -> Result<DiskUsage> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::assertions_on_result_states)]
+
     use super::*;
 
     const EXCESSIVE_VALUE_F64: f64 = 4_000_000_000_000_000_000.0;
