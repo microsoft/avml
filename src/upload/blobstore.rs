@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-use crate::{upload::status::Status, ONE_MB};
-use async_channel::{bounded, Receiver, Sender};
+use crate::{ONE_MB, upload::status::Status};
+use async_channel::{Receiver, Sender, bounded};
 use azure_core::error::Error as AzureError;
 use azure_storage_blobs::prelude::{BlobBlockType, BlobClient, BlockId, BlockList};
 use bytes::Bytes;

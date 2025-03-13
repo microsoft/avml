@@ -17,7 +17,7 @@ use elf::{abi::PT_LOAD, endian::NativeEndian, segment::ProgramHeader};
 #[cfg(not(target_family = "unix"))]
 use std::env::consts::OS;
 use std::{
-    fs::{metadata, OpenOptions},
+    fs::{OpenOptions, metadata},
     path::{Path, PathBuf},
 };
 

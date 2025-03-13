@@ -7,7 +7,7 @@
 #![deny(clippy::manual_assert)]
 #![deny(clippy::indexing_slicing)]
 
-use avml::{image, iomem::split_ranges, Error, Result, Snapshot, Source, ONE_MB};
+use avml::{Error, ONE_MB, Result, Snapshot, Source, image, iomem::split_ranges};
 use clap::{Parser, ValueEnum};
 use snap::read::FrameDecoder;
 use std::{

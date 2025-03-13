@@ -39,8 +39,11 @@ pub use crate::snapshot::{Snapshot, Source};
 pub use crate::upload::blobstore::{BlobUploader, DEFAULT_CONCURRENCY};
 #[cfg(feature = "put")]
 pub use crate::upload::http::put;
-use core::fmt::{Debug as FmtDebug, Formatter, Result as FmtResult};
-use std::{error::Error as StdError, io::Error as IoError};
+use core::{
+    error::Error as StdError,
+    fmt::{Debug as FmtDebug, Formatter, Result as FmtResult},
+};
+use std::io::Error as IoError;
 
 pub const ONE_MB: usize = 1024 * 1024;
 
