@@ -1,15 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-use std::{fs::OpenOptions, io::Read, ops::Range, path::Path};
+use core::{num::ParseIntError, ops::Range};
+use std::{
+    fs::OpenOptions,
+    io::{Error as IoError, Read},
+    path::Path,
+};
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("unable to read from /proc/iomem")]
-    Io(#[from] std::io::Error),
+    Io(#[from] IoError),
 
     #[error("unable to parse value")]
-    Parse(#[from] std::num::ParseIntError),
+    Parse(#[from] ParseIntError),
 
     #[error("unable to parse line: {0}")]
     ParseLine(String),

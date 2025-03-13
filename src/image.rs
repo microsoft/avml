@@ -3,13 +3,13 @@
 
 use crate::write_counter::Counter;
 use byteorder::{ByteOrder as _, LittleEndian, ReadBytesExt as _};
+use core::ops::Range;
 use snap::write::FrameEncoder;
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::OpenOptionsExt as _;
 use std::{
     fs::{File, OpenOptions},
     io::{Cursor, Read, Seek as _, SeekFrom, Write},
-    ops::Range,
     path::Path,
 };
 
@@ -43,7 +43,7 @@ pub enum Error {
     SizeConversion,
 }
 
-type Result<T> = std::result::Result<T, Error>;
+type Result<T> = core::result::Result<T, Error>;
 
 pub const MAX_BLOCK_SIZE: u64 = 0x1000 * 0x1000;
 const PAGE_SIZE: usize = 0x1000;
@@ -315,7 +315,7 @@ impl Image {
 
 #[cfg(test)]
 mod tests {
-    use std::ops::Range;
+    use core::ops::Range;
 
     #[test]
     fn encode_header_v1() {
