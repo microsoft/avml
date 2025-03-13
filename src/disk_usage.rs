@@ -2,7 +2,8 @@
 // Licensed under the MIT License.
 
 use crate::snapshot::{Error, Result};
-use std::{ffi::CString, num::NonZeroU64, ops::Range, os::unix::ffi::OsStrExt as _, path::Path};
+use core::{mem::zeroed, num::NonZeroU64, ops::Range};
+use std::{ffi::CString, os::unix::ffi::OsStrExt as _, path::Path};
 
 /// Assume roughly 100k per block extra overhead
 ///
@@ -123,7 +124,7 @@ fn disk_usage(path: &Path) -> Result<DiskUsage> {
     let cstr = CString::new(path.as_os_str().as_bytes())
         .map_err(|e| Error::Other("unable to convert path to CString", e.to_string()))?;
 
-    let mut statfs: libc::statfs64 = unsafe { std::mem::zeroed() };
+    let mut statfs: libc::statfs64 = unsafe { zeroed() };
     unsafe {
         let ret = libc::statfs64(cstr.as_ptr(), &mut statfs);
         if ret < 0 {

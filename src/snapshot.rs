@@ -8,13 +8,16 @@ use crate::{
     image::{Block, Image},
 };
 use clap::ValueEnum;
+use core::{
+    fmt::{Debug as FmtDebug, Display as FmtDisplay, Formatter, Result as FmtResult},
+    num::NonZeroU64,
+    ops::Range,
+};
 use elf::{abi::PT_LOAD, endian::NativeEndian, segment::ProgramHeader};
 #[cfg(not(target_family = "unix"))]
 use std::env::consts::OS;
 use std::{
     fs::{metadata, OpenOptions},
-    num::NonZeroU64,
-    ops::Range,
     path::{Path, PathBuf},
 };
 
@@ -47,13 +50,13 @@ pub enum Error {
     Disk(#[source] std::io::Error),
 }
 
-impl std::fmt::Debug for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl FmtDebug for Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         format_error(self, f)
     }
 }
 
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = core::result::Result<T, Error>;
 
 #[derive(Debug, Clone, ValueEnum)]
 pub enum Source {
@@ -91,8 +94,8 @@ pub enum Source {
     Raw(PathBuf),
 }
 
-impl std::fmt::Display for Source {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl FmtDisplay for Source {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::DevCrash => write!(f, "/dev/crash"),
             Self::DevMem => write!(f, "/dev/mem"),
