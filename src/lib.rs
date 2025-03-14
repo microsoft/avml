@@ -43,6 +43,7 @@ use core::{
     error::Error as StdError,
     fmt::{Debug as FmtDebug, Formatter, Result as FmtResult},
 };
+#[cfg(any(feature = "blobstore", feature = "put"))]
 use std::io::Error as IoError;
 
 pub const ONE_MB: usize = 1024 * 1024;
