@@ -32,7 +32,7 @@ impl Status {
 
     pub fn inc(&self, n: usize) {
         if let Some(ref bar) = self.bar {
-            bar.inc(n as u64);
+            bar.inc(n.try_into().unwrap_or(u64::MAX));
             if self.total.is_none() {
                 bar.set_length(bar.position());
             }

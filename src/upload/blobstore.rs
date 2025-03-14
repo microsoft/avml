@@ -307,7 +307,7 @@ impl BlobUploader {
         for i in 0..usize::MAX {
             let mut data = Vec::with_capacity(block_size);
 
-            let mut take_handle = handle.take(block_size as u64);
+            let mut take_handle = handle.take(block_size.try_into().unwrap_or(u64::MAX));
             let read_data = take_handle.read_to_end(&mut data).await?;
             if read_data == 0 {
                 break;
