@@ -269,11 +269,14 @@ impl<'a, 'b> Snapshot<'a, 'b> {
                     header.range.contains(&range.start),
                     // TODO: ranges is currently inclusive, but not a
                     // RangeInclusive.  this should be adjusted.
-                    header.range.contains(&(range.end - 1)),
+                    header.range.contains(&(range.end.saturating_sub(1))),
                 ) {
                     (true, true) => {
                         let block = Block {
-                            offset: header.offset + range.start - header.range.start,
+                            offset: header
+                                .offset
+                                .saturating_add(range.start)
+                                .saturating_sub(header.range.start),
                             range: range.clone(),
                         };
 
@@ -282,7 +285,10 @@ impl<'a, 'b> Snapshot<'a, 'b> {
                     }
                     (true, false) => {
                         let block = Block {
-                            offset: header.offset + range.start - header.range.start,
+                            offset: header
+                                .offset
+                                .saturating_add(range.start)
+                                .saturating_sub(header.range.start),
                             range: range.start..header.range.end,
                         };
 
@@ -353,13 +359,17 @@ impl<'a, 'b> Snapshot<'a, 'b> {
             .first()
             .ok_or_else(|| Error::UnableToCreateSnapshot("no initial memory range".to_string()))?
             .start;
-        let start = first_vaddr - first_start;
+        let start = first_vaddr.saturating_sub(first_start);
 
         let mut physical_ranges = vec![];
 
         for phdr in segments {
-            let entry_start = phdr.p_vaddr - start;
-            let entry_end = entry_start + phdr.p_memsz;
+            let entry_start = phdr.p_vaddr.checked_sub(start).ok_or_else(|| {
+                Error::UnableToCreateSnapshot("unable to calculate start address".to_string())
+            })?;
+            let entry_end = entry_start.checked_add(phdr.p_memsz).ok_or_else(|| {
+                Error::UnableToCreateSnapshot("unable to calculate end address".to_string())
+            })?;
 
             physical_ranges.push(Block {
                 range: entry_start..entry_end,

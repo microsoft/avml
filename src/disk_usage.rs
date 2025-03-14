@@ -45,7 +45,10 @@ pub fn check(
 
 fn check_max_usage(estimated: u64, max_disk_usage: NonZeroU64) -> Result<()> {
     // convert to MB
-    let allowed = max_disk_usage.get() * 1024 * 1024;
+    let allowed = max_disk_usage
+        .get()
+        .saturating_mul(1024)
+        .saturating_mul(1024);
 
     if estimated > allowed {
         return Err(Error::DiskUsageEstimateExceeded { estimated, allowed });
@@ -142,9 +145,9 @@ fn disk_usage(path: &Path) -> Result<DiskUsage> {
         .try_into()
         .map_err(|e| Error::Other("unable to identify block size", format!("{e}")))?;
 
-    let total = statfs.f_blocks * f_bsize;
-    let free = statfs.f_bavail * f_bsize;
-    let used = total - free;
+    let total = statfs.f_blocks.saturating_mul(f_bsize);
+    let free = statfs.f_bavail.saturating_mul(f_bsize);
+    let used = total.saturating_sub(free);
 
     let result = DiskUsage { total, used };
 

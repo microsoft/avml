@@ -83,7 +83,8 @@ impl Header {
         let end = src
             .read_u64::<LittleEndian>()
             .map_err(|e| Error::ReadHeader(e, "end offset"))?
-            + 1;
+            .checked_add(1)
+            .ok_or(Error::TooLarge)?;
         let padding = src
             .read_u64::<LittleEndian>()
             .map_err(|e| Error::ReadHeader(e, "padding"))?;
@@ -108,7 +109,10 @@ impl Header {
         };
         let mut bytes = [0; 32];
         LittleEndian::write_u32_into(&[magic, self.version], &mut bytes[..8]);
-        LittleEndian::write_u64_into(&[self.range.start, self.range.end - 1, 0], &mut bytes[8..]);
+        LittleEndian::write_u64_into(
+            &[self.range.start, self.range.end.saturating_sub(1), 0],
+            &mut bytes[8..],
+        );
         Ok(bytes)
     }
 
@@ -143,7 +147,7 @@ where
     while size >= PAGE_SIZE {
         src.read_exact(&mut buf).map_err(Error::Read)?;
         dst.write_all(&buf).map_err(Error::Write)?;
-        size -= PAGE_SIZE;
+        size = size.saturating_sub(PAGE_SIZE);
     }
     if size > 0 {
         buf.resize(size, 0);
@@ -159,8 +163,14 @@ where
     R: Read,
     W: Write,
 {
-    let size = usize::try_from(header.range.end - header.range.start)
-        .map_err(|_| Error::SizeConversion)?;
+    let size = usize::try_from(
+        header
+            .range
+            .end
+            .checked_sub(header.range.start)
+            .ok_or(Error::SizeConversion)?,
+    )
+    .map_err(|_| Error::SizeConversion)?;
 
     // read the entire block into memory, but still read page by page
     let mut buf = Cursor::new(vec![0; size]);
@@ -202,7 +212,7 @@ where
     W: Write,
 {
     header.write(dst)?;
-    let size = usize::try_from(header.range.end - header.range.start)
+    let size = usize::try_from(header.range.end.saturating_sub(header.range.start))
         .map_err(|_| Error::SizeConversion)?;
 
     if header.version == 1 {
@@ -232,7 +242,7 @@ where
     R: Read,
     W: Write,
 {
-    if header.range.end - header.range.start > MAX_BLOCK_SIZE {
+    if header.range.end.saturating_sub(header.range.start) > MAX_BLOCK_SIZE {
         copy_large_block(header, src, dst)
     } else {
         copy_if_nonzero(header, src, dst)
@@ -252,10 +262,14 @@ where
     W: Write,
 {
     if header.version == 2 {
-        while header.range.end - header.range.start > MAX_BLOCK_SIZE {
+        while header.range.end.saturating_sub(header.range.start) > MAX_BLOCK_SIZE {
             let range = Range {
                 start: header.range.start,
-                end: header.range.start + MAX_BLOCK_SIZE,
+                end: header
+                    .range
+                    .start
+                    .checked_add(MAX_BLOCK_SIZE)
+                    .ok_or(Error::TooLarge)?,
             };
             copy_block_impl(
                 &Header {
@@ -265,7 +279,11 @@ where
                 src,
                 dst,
             )?;
-            header.range.start += MAX_BLOCK_SIZE;
+            header.range.start = header
+                .range
+                .start
+                .checked_add(MAX_BLOCK_SIZE)
+                .ok_or(Error::TooLarge)?;
         }
     }
     if header.range.end > header.range.start {
