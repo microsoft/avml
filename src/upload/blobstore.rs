@@ -115,7 +115,9 @@ fn calc_concurrency(
                 x if (x < REASONABLE_BLOCK_SIZE * BLOB_MAX_BLOCKS) => REASONABLE_BLOCK_SIZE,
                 // otherwise, just use the smallest block size that will fit
                 // within MAX BLOCKS to reduce memory pressure
-                x => (x / BLOB_MAX_BLOCKS) + 1,
+                x => (x / BLOB_MAX_BLOCKS)
+                    .checked_add(1)
+                    .ok_or(Error::TooLarge)?,
             }
         }
         // minimum required to hit high-throughput block blob performance thresholds
@@ -130,11 +132,11 @@ fn calc_concurrency(
     let upload_concurrency = match upload_concurrency {
         // manually specifying concurrency of 0 will disable concurrency
         0 | 1 => 1,
-        _ => match (MEMORY_THRESHOLD).saturating_div(block_size) {
-            0 => 1,
+        _ => match (MEMORY_THRESHOLD).checked_div(block_size) {
+            None | Some(0) => 1,
             // cap the number of concurrent threads to reduce concurrency issues
             // at the server end.
-            x => cmp::min(MAX_CONCURRENCY, x),
+            Some(x) => cmp::min(MAX_CONCURRENCY, x),
         },
     };
 

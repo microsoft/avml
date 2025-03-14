@@ -91,7 +91,7 @@ pub(crate) fn format_error(e: &impl StdError, f: &mut Formatter) -> FmtResult {
         while let Some(inner) = source {
             writeln!(f, "{i: >5}: {inner}")?;
             source = inner.source();
-            i += 1;
+            i = i.saturating_add(1);
         }
     }
 

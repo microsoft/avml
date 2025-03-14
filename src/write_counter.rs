@@ -29,7 +29,7 @@ impl<W> Counter<W> {
 impl<W: Write> Write for Counter<W> {
     fn write(&mut self, buf: &[u8]) -> Result<usize> {
         let count = self.inner.write(buf)?;
-        self.count += count;
+        self.count = self.count.saturating_add(count);
         Ok(count)
     }
 

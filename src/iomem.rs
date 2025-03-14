@@ -89,12 +89,13 @@ pub fn split_ranges(ranges: Vec<Range<u64>>, max_size: u64) -> Vec<Range<u64>> {
     let mut result = vec![];
 
     for mut range in ranges {
-        while range.end - range.start > max_size {
+        while range.end.saturating_sub(range.start) > max_size {
+            let end = range.start.saturating_add(max_size);
             result.push(Range {
                 start: range.start,
-                end: range.start + max_size,
+                end,
             });
-            range.start += max_size;
+            range.start = end;
         }
         if !range.is_empty() {
             result.push(range);
