@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-use crate::write_counter::Counter;
+use crate::io::counters::Counter;
 use byteorder::{ByteOrder as _, LittleEndian, ReadBytesExt as _};
 use core::ops::Range;
 use snap::write::FrameEncoder;
