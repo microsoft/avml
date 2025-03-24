@@ -29,10 +29,10 @@
 #[cfg(target_family = "unix")]
 mod disk_usage;
 pub mod image;
+pub mod io;
 pub mod iomem;
 mod snapshot;
 mod upload;
-mod write_counter;
 
 pub use crate::snapshot::{Snapshot, Source};
 #[cfg(feature = "blobstore")]
