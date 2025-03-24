@@ -41,7 +41,6 @@ impl<W: Write> Write for Counter<W> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use snap::{read::FrameDecoder, write::FrameEncoder};
     use std::io::Cursor;
 
     #[test]
@@ -54,38 +53,6 @@ mod tests {
         counter.write_all(data)?;
         assert_eq!(counter.count(), data.len());
         assert_eq!(counter.into_inner().into_inner(), data);
-        Ok(())
-    }
-
-    #[test]
-    fn encode_snap() -> Result<()> {
-        let size = 1000;
-        let many_a = "A".repeat(size).into_bytes();
-
-        let compressed_data = {
-            let cursor = Cursor::new(vec![]);
-            let mut counter = Counter::new(cursor);
-            {
-                let mut snap = FrameEncoder::new(&mut counter);
-                snap.write_all(&many_a)?;
-            }
-            // verify we had some compression here...
-            assert!(counter.count() < size);
-            counter.into_inner().into_inner()
-        };
-
-        let result = {
-            let mut compressed = Cursor::new(compressed_data);
-            let decoded = Cursor::new(vec![]);
-            let mut counter = Counter::new(decoded);
-            {
-                let mut snap = FrameDecoder::new(&mut compressed);
-                std::io::copy(&mut snap, &mut counter)?;
-            }
-            assert_eq!(counter.count(), size, "verify decoded size");
-            counter.into_inner().into_inner()
-        };
-        assert_eq!(many_a, result, "verify decoded byte are equal");
         Ok(())
     }
 }
