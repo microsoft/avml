@@ -1,10 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-use crate::io::counter::Counter;
+use crate::io::snappy::SnapWriter;
 use byteorder::{ByteOrder as _, LittleEndian, ReadBytesExt as _};
 use core::ops::Range;
-use snap::write::FrameEncoder;
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::OpenOptionsExt as _;
 use std::{
@@ -187,13 +186,10 @@ where
         dst.write_all(&buf).map_err(Error::Write)?;
     } else {
         let count = {
-            let mut counter = Counter::new(dst);
-            {
-                let mut snap_fh = FrameEncoder::new(&mut counter);
-                snap_fh.write_all(&buf).map_err(Error::Write)?;
-            }
-            let count = counter.count();
-            dst = counter.into_inner();
+            let mut encoder = SnapWriter::new(dst);
+            encoder.write_all(&buf).map_err(Error::Write)?;
+            let (count, dst_after) = encoder.into_inner().map_err(Error::Write)?;
+            dst = dst_after;
             count
         };
         let count = count.try_into().map_err(|_| Error::SizeConversion)?;
@@ -219,13 +215,10 @@ where
         copy(size, src, dst)?;
     } else {
         let count = {
-            let mut counter = Counter::new(dst);
-            {
-                let mut snap_fh = FrameEncoder::new(&mut counter);
-                copy(size, src, &mut snap_fh)?;
-            }
-            let count = counter.count();
-            dst = counter.into_inner();
+            let mut encoder = SnapWriter::new(dst);
+            copy(size, src, &mut encoder)?;
+            let (count, dst_after) = encoder.into_inner().map_err(Error::Write)?;
+            dst = dst_after;
             count
         };
         let count = count.try_into().map_err(|_| Error::SizeConversion)?;
