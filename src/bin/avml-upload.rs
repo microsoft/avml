@@ -7,7 +7,7 @@
 #![deny(clippy::manual_assert)]
 #![deny(clippy::indexing_slicing)]
 
-use avml::{BlobUploader, DEFAULT_CONCURRENCY, Error, put};
+use avml::{BlobUploader, DEFAULT_CONCURRENCY, Error, Result, put};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use tokio::runtime::Runtime;
@@ -47,7 +47,7 @@ enum Commands {
     },
 }
 
-async fn run(cmd: Cmd) -> avml::Result<()> {
+async fn run(cmd: Cmd) -> Result<()> {
     match cmd.command {
         Commands::Put { filename, url } => put(&filename, &url).await?,
         Commands::UploadBlob {
@@ -65,7 +65,7 @@ async fn run(cmd: Cmd) -> avml::Result<()> {
     Ok(())
 }
 
-fn main() -> avml::Result<()> {
+fn main() -> Result<()> {
     let cmd = Cmd::parse();
     Runtime::new().map_err(Error::Tokio)?.block_on(run(cmd))?;
     Ok(())

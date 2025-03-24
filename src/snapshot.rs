@@ -4,7 +4,7 @@
 #[cfg(target_family = "unix")]
 use crate::disk_usage;
 use crate::{
-    format_error,
+    errors::format_error,
     image::{Block, Image},
 };
 use clap::ValueEnum;
