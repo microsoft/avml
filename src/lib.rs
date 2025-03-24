@@ -30,10 +30,10 @@
 mod disk_usage;
 pub mod errors;
 pub mod image;
+pub mod io;
 pub mod iomem;
 mod snapshot;
 mod upload;
-mod write_counter;
 
 pub use crate::errors::Error;
 pub use crate::snapshot::{Snapshot, Source};
