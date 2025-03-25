@@ -2,7 +2,6 @@ use core::{
     error::Error as StdError,
     fmt::{Debug as FmtDebug, Formatter, Result as FmtResult},
 };
-#[cfg(any(feature = "blobstore", feature = "put"))]
 use std::io::Error as IoError;
 
 #[derive(thiserror::Error)]
@@ -24,13 +23,8 @@ pub enum Error {
     #[error("unable to upload file to Azure Storage")]
     Blob(#[from] crate::upload::blobstore::Error),
 
-    #[cfg(any(feature = "blobstore", feature = "put"))]
-    #[error("tokio runtime error: {0}")]
-    Tokio(#[source] IoError),
-
-    #[cfg(any(feature = "blobstore", feature = "put"))]
-    #[error("unable to remove snapshot")]
-    RemoveSnapshot(#[source] IoError),
+    #[error("io error: {0}")]
+    Io(#[source] IoError, &'static str),
 
     #[error("no conversion required")]
     NoConversionRequired,
