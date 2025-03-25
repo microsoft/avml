@@ -14,14 +14,8 @@ use std::{
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    #[error("unable to write image")]
-    Write(#[source] std::io::Error),
-
-    #[error("unable to read memory")]
-    Read(#[source] std::io::Error),
-
-    #[error("unable to read header: {1}")]
-    ReadHeader(#[source] std::io::Error, &'static str),
+    #[error("io error: {1}")]
+    Io(#[source] std::io::Error, &'static str),
 
     #[error("invalid padding")]
     InvalidPadding,
@@ -38,8 +32,8 @@ pub enum Error {
     #[error("write block failed: {0:?}")]
     WriteBlock(Range<u64>),
 
-    #[error("size conversion error")]
-    SizeConversion,
+    #[error(transparent)]
+    IntConversion(#[from] core::num::TryFromIntError),
 }
 
 type Result<T> = core::result::Result<T, Error>;
@@ -72,21 +66,21 @@ impl Header {
     pub fn read(mut src: &File) -> Result<Self> {
         let magic = src
             .read_u32::<LittleEndian>()
-            .map_err(|e| Error::ReadHeader(e, "magic"))?;
+            .map_err(|e| Error::Io(e, "unable to read header magic"))?;
         let version = src
             .read_u32::<LittleEndian>()
-            .map_err(|e| Error::ReadHeader(e, "version"))?;
+            .map_err(|e| Error::Io(e, "unable to read header version"))?;
         let start = src
             .read_u64::<LittleEndian>()
-            .map_err(|e| Error::ReadHeader(e, "start offset"))?;
+            .map_err(|e| Error::Io(e, "unable to read header start offset"))?;
         let end = src
             .read_u64::<LittleEndian>()
-            .map_err(|e| Error::ReadHeader(e, "end offset"))?
+            .map_err(|e| Error::Io(e, "unable to read header end offset"))?
             .checked_add(1)
             .ok_or(Error::TooLarge)?;
         let padding = src
             .read_u64::<LittleEndian>()
-            .map_err(|e| Error::ReadHeader(e, "padding"))?;
+            .map_err(|e| Error::Io(e, "unable to read header padding"))?;
         if padding != 0 {
             return Err(Error::InvalidPadding);
         }
@@ -126,7 +120,8 @@ impl Header {
         W: Write,
     {
         let bytes = self.encode()?;
-        dst.write_all(&bytes).map_err(Error::Write)?;
+        dst.write_all(&bytes)
+            .map_err(|e| Error::Io(e, "unable to write header"))?;
         Ok(())
     }
 }
@@ -144,14 +139,18 @@ where
 {
     let mut buf = vec![0; PAGE_SIZE];
     while size >= PAGE_SIZE {
-        src.read_exact(&mut buf).map_err(Error::Read)?;
-        dst.write_all(&buf).map_err(Error::Write)?;
+        src.read_exact(&mut buf)
+            .map_err(|e| Error::Io(e, "unable to read memory page"))?;
+        dst.write_all(&buf)
+            .map_err(|e| Error::Io(e, "unable to write memory page"))?;
         size = size.saturating_sub(PAGE_SIZE);
     }
     if size > 0 {
         buf.resize(size, 0);
-        src.read_exact(&mut buf).map_err(Error::Read)?;
-        dst.write_all(&buf).map_err(Error::Write)?;
+        src.read_exact(&mut buf)
+            .map_err(|e| Error::Io(e, "unable to read memory page"))?;
+        dst.write_all(&buf)
+            .map_err(|e| Error::Io(e, "unable to write memory page"))?;
     }
     Ok(())
 }
@@ -162,14 +161,7 @@ where
     R: Read,
     W: Write,
 {
-    let size = usize::try_from(
-        header
-            .range
-            .end
-            .checked_sub(header.range.start)
-            .ok_or(Error::SizeConversion)?,
-    )
-    .map_err(|_| Error::SizeConversion)?;
+    let size = usize::try_from(header.range.end.saturating_sub(header.range.start))?;
 
     // read the entire block into memory, but still read page by page
     let mut buf = Cursor::new(vec![0; size]);
@@ -183,21 +175,26 @@ where
 
     header.write(dst)?;
     if header.version == 1 {
-        dst.write_all(&buf).map_err(Error::Write)?;
+        dst.write_all(&buf)
+            .map_err(|e| Error::Io(e, "unable to write non-zero block"))?;
     } else {
         let count = {
             let mut encoder = SnapWriter::new(dst);
-            encoder.write_all(&buf).map_err(Error::Write)?;
-            let (count, dst_after) = encoder.into_inner().map_err(Error::Write)?;
+            encoder
+                .write_all(&buf)
+                .map_err(|e| Error::Io(e, "unable to write compressed block"))?;
+            let (count, dst_after) = encoder
+                .into_inner()
+                .map_err(|e| Error::Io(e, "unable to flush compressed data"))?;
             dst = dst_after;
-            count
+            count.try_into()?
         };
-        let count = count.try_into().map_err(|_| Error::SizeConversion)?;
 
         let mut size_bytes = [0; 8];
         LittleEndian::write_u64_into(&[count], &mut size_bytes);
 
-        dst.write_all(&size_bytes).map_err(Error::Write)?;
+        dst.write_all(&size_bytes)
+            .map_err(|e| Error::Io(e, "unable to write compressed size"))?;
     }
     Ok(())
 }
@@ -208,8 +205,7 @@ where
     W: Write,
 {
     header.write(dst)?;
-    let size = usize::try_from(header.range.end.saturating_sub(header.range.start))
-        .map_err(|_| Error::SizeConversion)?;
+    let size = usize::try_from(header.range.end.saturating_sub(header.range.start))?;
 
     if header.version == 1 {
         copy(size, src, dst)?;
@@ -217,15 +213,17 @@ where
         let count = {
             let mut encoder = SnapWriter::new(dst);
             copy(size, src, &mut encoder)?;
-            let (count, dst_after) = encoder.into_inner().map_err(Error::Write)?;
+            let (count, dst_after) = encoder
+                .into_inner()
+                .map_err(|e| Error::Io(e, "unable to copy decompressed data"))?;
             dst = dst_after;
-            count
+            count.try_into()?
         };
-        let count = count.try_into().map_err(|_| Error::SizeConversion)?;
 
         let mut size_bytes = [0; 8];
         LittleEndian::write_u64_into(&[count], &mut size_bytes);
-        dst.write_all(&size_bytes).map_err(Error::Write)?;
+        dst.write_all(&size_bytes)
+            .map_err(|e| Error::Io(e, "unable to write compressed size"))?;
     }
     Ok(())
 }
@@ -300,7 +298,7 @@ impl Image {
             .create(true)
             .truncate(true)
             .open(path)
-            .map_err(Error::Write)
+            .map_err(|e| Error::Io(e, "unable to create snapshot file"))
     }
 
     #[cfg(target_family = "unix")]
@@ -311,7 +309,7 @@ impl Image {
             .create(true)
             .truncate(true)
             .open(path)
-            .map_err(Error::Write)
+            .map_err(|e| Error::Io(e, "unable to create snapshot file"))
     }
 
     /// Creates a new Image with the specified version, source filename, and destination filename.
@@ -324,7 +322,7 @@ impl Image {
         let src = OpenOptions::new()
             .read(true)
             .open(src_filename)
-            .map_err(Error::Read)?;
+            .map_err(|e| Error::Io(e, "unable to open memory source"))?;
 
         let dst = Self::open_dst(dst_filename)?;
 
@@ -352,7 +350,7 @@ impl Image {
         if block.offset > 0 {
             self.src
                 .seek(SeekFrom::Start(block.offset))
-                .map_err(Error::Read)?;
+                .map_err(|e| Error::Io(e, "unable to see to page"))?;
         }
 
         copy_block(header, &mut self.src, &mut self.dst)?;

@@ -32,8 +32,8 @@ pub enum Error {
     #[error("error uploading file")]
     Azure(#[from] AzureError),
 
-    #[error("size conversion error")]
-    SizeConversion,
+    #[error(transparent)]
+    IntConversion(#[from] core::num::TryFromIntError),
 }
 
 type Result<T> = core::result::Result<T, Error>;
@@ -239,12 +239,7 @@ impl BlobUploader {
     /// - There is a failure finalizing the block list
     pub async fn upload_file(mut self, filename: &Path) -> Result<()> {
         let file = File::open(filename).await?;
-        let file_size = file
-            .metadata()
-            .await?
-            .len()
-            .try_into()
-            .map_err(|_| Error::SizeConversion)?;
+        let file_size = file.metadata().await?.len().try_into()?;
 
         self.size = file_size;
 
@@ -283,9 +278,7 @@ impl BlobUploader {
     }
 
     async fn uploaders(&self, count: usize) -> Result<()> {
-        let status = Status::new(Some(
-            self.size.try_into().map_err(|_| Error::SizeConversion)?,
-        ));
+        let status = Status::new(Some(self.size.try_into()?));
 
         let uploaders: Vec<_> = (0..usize::max(1, count))
             .map(|_| {

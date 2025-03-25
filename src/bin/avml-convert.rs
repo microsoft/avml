@@ -17,11 +17,15 @@ use std::{
 };
 
 fn convert(src: &Path, dst: &Path, compress: bool) -> Result<()> {
-    let src_len = metadata(src).map_err(image::Error::Read)?.len();
+    let src_len = metadata(src)
+        .map_err(|e| image::Error::Io(e, "unable to read source size"))?
+        .len();
     let mut image = image::Image::new(1, src, dst)?;
 
     loop {
-        let current = image.src.stream_position().map_err(image::Error::Read)?;
+        let current = image.src.stream_position().map_err(|e| {
+            image::Error::Io(e, "unable to get current offset into the memory source")
+        })?;
         if current >= src_len {
             break;
         }
@@ -40,7 +44,7 @@ fn convert(src: &Path, dst: &Path, compress: bool) -> Result<()> {
                 image
                     .src
                     .seek(SeekFrom::Current(8))
-                    .map_err(image::Error::Read)?;
+                    .map_err(|e| image::Error::Io(e, "unable to seek passed compressed len"))?;
             }
             _ => unimplemented!(),
         }
@@ -50,32 +54,47 @@ fn convert(src: &Path, dst: &Path, compress: bool) -> Result<()> {
 }
 
 fn convert_to_raw(src: &Path, dst: &Path) -> Result<()> {
-    let src_len = metadata(src).map_err(image::Error::Read)?.len();
+    let src_len = metadata(src)
+        .map_err(|e| image::Error::Io(e, "unable to get source file size"))?
+        .len();
     let mut image = image::Image::new(1, src, dst)?;
 
     loop {
-        let current = image.src.stream_position().map_err(image::Error::Read)?;
+        let current = image.src.stream_position().map_err(|e| {
+            image::Error::Io(e, "unable to get the current offset into the memory source")
+        })?;
         if current >= src_len {
             break;
         }
-        let current_dst = image.dst.stream_position().map_err(image::Error::Read)?;
+        let current_dst = image.dst.stream_position().map_err(|e| {
+            image::Error::Io(
+                e,
+                "unable to get the current offset into the destination stream",
+            )
+        })?;
 
         let header = image::Header::read(&image.src)?;
         let mut zeros = vec![0; ONE_MB];
 
         let mut unmapped = usize::try_from(header.range.start - current_dst)
-            .map_err(|_| image::Error::SizeConversion)?;
+            .map_err(image::Error::IntConversion)?;
         while unmapped > ONE_MB {
-            image.dst.write_all(&zeros).map_err(image::Error::Write)?;
+            image
+                .dst
+                .write_all(&zeros)
+                .map_err(|e| image::Error::Io(e, "unable to write padding bytes"))?;
             unmapped -= ONE_MB;
         }
         if unmapped > 0 {
             zeros.resize(unmapped, 0);
-            image.dst.write_all(&zeros).map_err(image::Error::Write)?;
+            image
+                .dst
+                .write_all(&zeros)
+                .map_err(|e| image::Error::Io(e, "unable to write padding bytes"))?;
         }
 
         let size = usize::try_from(header.range.end - header.range.start)
-            .map_err(|_| image::Error::SizeConversion)?;
+            .map_err(image::Error::IntConversion)?;
 
         match header.version {
             1 => {
@@ -87,7 +106,7 @@ fn convert_to_raw(src: &Path, dst: &Path) -> Result<()> {
                 image
                     .src
                     .seek(SeekFrom::Current(8))
-                    .map_err(image::Error::Read)?;
+                    .map_err(|e| image::Error::Io(e, "unable to seek past the compressed size"))?;
             }
             _ => unimplemented!(),
         }
@@ -97,7 +116,10 @@ fn convert_to_raw(src: &Path, dst: &Path) -> Result<()> {
 }
 
 fn convert_from_raw(src: &Path, dst: &Path, compress: bool) -> Result<()> {
-    let src_len = metadata(src).map_err(image::Error::Read)?.len();
+    let src_len = metadata(src)
+        .map_err(|e| image::Error::Io(e, "unable to read source size"))?
+        .len();
+
     let ranges = split_ranges(vec![0..src_len; 1], image::MAX_BLOCK_SIZE);
 
     let version = if compress { 2 } else { 1 };
