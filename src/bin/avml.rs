@@ -108,7 +108,7 @@ async fn upload(config: &Config) -> Result<()> {
     if delete && config.delete {
         remove_file(&config.filename)
             .await
-            .map_err(Error::RemoveSnapshot)?;
+            .map_err(|e| Error::Io(e, "unable to remove snapshot"))?;
     }
 
     Ok(())
@@ -129,8 +129,9 @@ fn main() -> Result<()> {
 
     #[cfg(any(feature = "blobstore", feature = "put"))]
     {
-        let rt = Runtime::new().map_err(Error::Tokio)?;
-        rt.block_on(upload(&config))?;
+        Runtime::new()
+            .map_err(|e| Error::Io(e, "tokio runtime error"))?
+            .block_on(upload(&config))?;
     }
 
     Ok(())

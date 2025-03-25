@@ -67,6 +67,8 @@ async fn run(cmd: Cmd) -> Result<()> {
 
 fn main() -> Result<()> {
     let cmd = Cmd::parse();
-    Runtime::new().map_err(Error::Tokio)?.block_on(run(cmd))?;
+    Runtime::new()
+        .map_err(|e| Error::Io(e, "tokio runtime error"))?
+        .block_on(run(cmd))?;
     Ok(())
 }
