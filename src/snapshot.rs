@@ -16,8 +16,9 @@ use core::{
 use elf::{abi::PT_LOAD, endian::NativeEndian, segment::ProgramHeader};
 #[cfg(not(target_family = "unix"))]
 use std::env::consts::OS;
+use std::io::{Read, Seek, Write};
 use std::{
-    fs::{OpenOptions, metadata},
+    fs::{File, OpenOptions, metadata},
     path::{Path, PathBuf},
 };
 
@@ -310,7 +311,7 @@ impl<'a, 'b> Snapshot<'a, 'b> {
     /// NOTE: This requires `Image` because we want to ensure this is called
     /// after the file is created.
     #[cfg(target_family = "unix")]
-    fn check_disk_usage(&self, _: &Image) -> Result<()> {
+    fn check_disk_usage<R: Read + Seek, W: Write>(&self, _: &Image<R, W>) -> Result<()> {
         disk_usage::check(
             self.destination,
             &self.memory_ranges,
@@ -323,7 +324,7 @@ impl<'a, 'b> Snapshot<'a, 'b> {
     ///
     /// On non-Unix platforms, this operation is a no-op.
     #[cfg(not(target_family = "unix"))]
-    fn check_disk_usage(&self, _: &Image) -> Result<()> {
+    fn check_disk_usage<R, W>(&self, _: &Image<R, W>) -> Result<()> {
         if self.max_disk_usage.is_some() || self.max_disk_usage_percentage.is_some() {
             return Err(Error::Other(
                 "unable to check disk usage on this platform",
@@ -338,7 +339,8 @@ impl<'a, 'b> Snapshot<'a, 'b> {
             return Err(Error::LockedDownKcore);
         }
 
-        let mut image = Image::new(self.version, Path::new("/proc/kcore"), self.destination)?;
+        let mut image =
+            Image::<File, File>::new(self.version, Path::new("/proc/kcore"), self.destination)?;
         self.check_disk_usage(&image)?;
 
         let file =
@@ -397,7 +399,7 @@ impl<'a, 'b> Snapshot<'a, 'b> {
             })
             .collect::<Vec<_>>();
 
-        let mut image = Image::new(self.version, mem, self.destination)?;
+        let mut image = Image::<File, File>::new(self.version, mem, self.destination)?;
         self.check_disk_usage(&image)?;
 
         image.write_blocks(&blocks)?;

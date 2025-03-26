@@ -50,7 +50,7 @@ impl<W: Write> Write for SnapCountWriter<W> {
 mod tests {
     use super::*;
     use snap::read::FrameDecoder;
-    use std::io::Cursor;
+    use std::io::{Cursor, copy};
 
     #[test]
     fn encode_snap() -> Result<()> {
@@ -82,7 +82,7 @@ mod tests {
             let mut counter = Counter::new(decoded);
             {
                 let mut snap = FrameDecoder::new(&mut compressed);
-                std::io::copy(&mut snap, &mut counter)?;
+                copy(&mut snap, &mut counter)?;
             }
             assert_eq!(counter.count(), size, "verify decoded size");
             counter.into_inner().into_inner()

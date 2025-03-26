@@ -11,16 +11,16 @@ use avml::{Error, ONE_MB, Result, Snapshot, Source, image, iomem::split_ranges};
 use clap::{Parser, ValueEnum};
 use snap::read::FrameDecoder;
 use std::{
-    fs::metadata,
-    io::{Seek, SeekFrom, Write},
+    fs::{File, metadata},
+    io::{Read, Seek, SeekFrom, Write, copy},
     path::{Path, PathBuf},
 };
 
-fn convert(src: &Path, dst: &Path, compress: bool) -> Result<()> {
+fn convert(src: &Path, dst: &Path) -> Result<()> {
     let src_len = metadata(src)
         .map_err(|e| image::Error::Io(e, "unable to read source size"))?
         .len();
-    let mut image = image::Image::new(1, src, dst)?;
+    let mut image = image::Image::<File, File>::new(1, src, dst)?;
 
     loop {
         let current = image.src.stream_position().map_err(|e| {
@@ -30,24 +30,7 @@ fn convert(src: &Path, dst: &Path, compress: bool) -> Result<()> {
             break;
         }
 
-        let header = image::Header::read(&image.src)?;
-        let mut new_header = header.clone();
-        new_header.version = if compress { 2 } else { 1 };
-
-        match header.version {
-            1 => {
-                image::copy_block(new_header, &mut image.src, &mut image.dst)?;
-            }
-            2 => {
-                let mut decoder = FrameDecoder::new(&image.src);
-                image::copy_block(new_header, &mut decoder, &mut image.dst)?;
-                image
-                    .src
-                    .seek(SeekFrom::Current(8))
-                    .map_err(|e| image::Error::Io(e, "unable to seek passed compressed len"))?;
-            }
-            _ => unimplemented!(),
-        }
+        image.convert_block()?;
     }
 
     Ok(())
@@ -57,7 +40,7 @@ fn convert_to_raw(src: &Path, dst: &Path) -> Result<()> {
     let src_len = metadata(src)
         .map_err(|e| image::Error::Io(e, "unable to get source file size"))?
         .len();
-    let mut image = image::Image::new(1, src, dst)?;
+    let mut image = image::Image::<File, File>::new(1, src, dst)?;
 
     loop {
         let current = image.src.stream_position().map_err(|e| {
@@ -73,7 +56,7 @@ fn convert_to_raw(src: &Path, dst: &Path) -> Result<()> {
             )
         })?;
 
-        let header = image::Header::read(&image.src)?;
+        let header = image.read_header()?;
         let mut zeros = vec![0; ONE_MB];
 
         let mut unmapped = usize::try_from(header.range.start - current_dst)
@@ -93,16 +76,18 @@ fn convert_to_raw(src: &Path, dst: &Path) -> Result<()> {
                 .map_err(|e| image::Error::Io(e, "unable to write padding bytes"))?;
         }
 
-        let size = usize::try_from(header.range.end - header.range.start)
-            .map_err(image::Error::IntConversion)?;
+        let size = header.size()?;
 
         match header.version {
             1 => {
-                image::copy(size, &mut image.src, &mut image.dst)?;
+                let mut handle = (&mut image.src).take(size as u64);
+                copy(&mut handle, &mut image.dst)
+                    .map_err(|e| image::Error::Io(e, "unable to copy image data"))?;
             }
             2 => {
-                let mut decoder = FrameDecoder::new(&image.src);
-                image::copy(size, &mut decoder, &mut image.dst)?;
+                let mut decoder = FrameDecoder::new(&image.src).take(size as u64);
+                copy(&mut decoder, &mut image.dst)
+                    .map_err(|e| image::Error::Io(e, "unable to copy image data"))?;
                 image
                     .src
                     .seek(SeekFrom::Current(8))
@@ -168,8 +153,9 @@ fn main() -> Result<()> {
         (Format::Lime | Format::LimeCompressed, Format::Raw) => {
             convert_to_raw(&config.src, &config.dst)
         }
-        (Format::Lime, Format::LimeCompressed) => convert(&config.src, &config.dst, true),
-        (Format::LimeCompressed, Format::Lime) => convert(&config.src, &config.dst, false),
+        (Format::Lime, Format::LimeCompressed) | (Format::LimeCompressed, Format::Lime) => {
+            convert(&config.src, &config.dst)
+        }
         (Format::Raw, Format::Lime) => convert_from_raw(&config.src, &config.dst, false),
         (Format::Raw, Format::LimeCompressed) => convert_from_raw(&config.src, &config.dst, true),
         (Format::Lime, Format::Lime)
