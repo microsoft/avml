@@ -6,25 +6,24 @@ use snap::write::FrameEncoder;
 use std::io::{Result, Write};
 
 pub struct SnapWriter<W: Write> {
-    inner: Counter<FrameEncoder<W>>,
+    inner: FrameEncoder<Counter<W>>,
 }
 
 impl<W: Write> SnapWriter<W> {
     pub fn new(handle: W) -> Self {
         Self {
-            inner: Counter::new(FrameEncoder::new(handle)),
+            inner: FrameEncoder::new(Counter::new(handle)),
         }
     }
 
     pub fn into_inner(mut self) -> Result<(usize, W)> {
         self.flush()?;
-        let count = self.inner.count();
         let inner = self
             .inner
             .into_inner()
-            .into_inner()
             .map_err(snap::write::IntoInnerError::into_error)?;
-        Ok((count, inner))
+        let count = inner.count();
+        Ok((count, inner.into_inner()))
     }
 }
 
