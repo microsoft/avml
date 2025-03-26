@@ -4,7 +4,7 @@
 # Licensed under the MIT License.
 #
 
-set -ue -o pipefail
+set -ueo pipefail
 
 cd $(dirname ${BASH_SOURCE[0]})/../
 
