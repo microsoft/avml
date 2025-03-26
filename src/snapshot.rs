@@ -324,7 +324,7 @@ impl<'a, 'b> Snapshot<'a, 'b> {
     ///
     /// On non-Unix platforms, this operation is a no-op.
     #[cfg(not(target_family = "unix"))]
-    fn check_disk_usage<R, W>(&self, _: &Image<R, W>) -> Result<()> {
+    fn check_disk_usage<R: Read + Seek, W: Write>(&self, _: &Image<R, W>) -> Result<()> {
         if self.max_disk_usage.is_some() || self.max_disk_usage_percentage.is_some() {
             return Err(Error::Other(
                 "unable to check disk usage on this platform",
