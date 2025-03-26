@@ -85,9 +85,10 @@ fn convert_to_raw(src: &Path, dst: &Path) -> Result<()> {
                     .map_err(|e| image::Error::Io(e, "unable to copy image data"))?;
             }
             2 => {
-                let mut decoder = FrameDecoder::new(&image.src).take(size as u64);
+                let mut decoder = FrameDecoder::new(image.src).take(size as u64);
                 copy(&mut decoder, &mut image.dst)
                     .map_err(|e| image::Error::Io(e, "unable to copy image data"))?;
+                image.src = decoder.into_inner().into_inner();
                 image
                     .src
                     .seek(SeekFrom::Current(8))
