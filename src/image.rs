@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-use crate::io::snappy::SnapWriter;
+use crate::io::snappy::SnapCountWriter;
 use byteorder::{ByteOrder as _, LittleEndian, ReadBytesExt as _};
 use core::ops::Range;
 #[cfg(target_family = "unix")]
@@ -156,7 +156,7 @@ where
 }
 
 // read the entire block into memory, and only write it if it's not empty
-fn copy_if_nonzero<R, W>(header: &Header, src: &mut R, mut dst: &mut W) -> Result<()>
+fn copy_if_nonzero<R, W>(header: &Header, src: &mut R, dst: &mut W) -> Result<()>
 where
     R: Read,
     W: Write,
@@ -178,28 +178,18 @@ where
         dst.write_all(&buf)
             .map_err(|e| Error::Io(e, "unable to write non-zero block"))?;
     } else {
-        let count = {
-            let mut encoder = SnapWriter::new(dst);
-            encoder
-                .write_all(&buf)
-                .map_err(|e| Error::Io(e, "unable to write compressed block"))?;
-            let (count, dst_after) = encoder
-                .into_inner()
-                .map_err(|e| Error::Io(e, "unable to flush compressed data"))?;
-            dst = dst_after;
-            count.try_into()?
-        };
-
-        let mut size_bytes = [0; 8];
-        LittleEndian::write_u64_into(&[count], &mut size_bytes);
-
-        dst.write_all(&size_bytes)
-            .map_err(|e| Error::Io(e, "unable to write compressed size"))?;
+        let mut encoder = SnapCountWriter::new(dst);
+        encoder
+            .write_all(&buf)
+            .map_err(|e| Error::Io(e, "unable to write compressed block"))?;
+        encoder
+            .finalize()
+            .map_err(|e| Error::Io(e, "unable to finalize compressed block"))?;
     }
     Ok(())
 }
 
-fn copy_large_block<R, W>(header: &Header, src: &mut R, mut dst: &mut W) -> Result<()>
+fn copy_large_block<R, W>(header: &Header, src: &mut R, dst: &mut W) -> Result<()>
 where
     R: Read,
     W: Write,
@@ -210,20 +200,11 @@ where
     if header.version == 1 {
         copy(size, src, dst)?;
     } else {
-        let count = {
-            let mut encoder = SnapWriter::new(dst);
-            copy(size, src, &mut encoder)?;
-            let (count, dst_after) = encoder
-                .into_inner()
-                .map_err(|e| Error::Io(e, "unable to copy decompressed data"))?;
-            dst = dst_after;
-            count.try_into()?
-        };
-
-        let mut size_bytes = [0; 8];
-        LittleEndian::write_u64_into(&[count], &mut size_bytes);
-        dst.write_all(&size_bytes)
-            .map_err(|e| Error::Io(e, "unable to write compressed size"))?;
+        let mut encoder = SnapCountWriter::new(dst);
+        copy(size, src, &mut encoder)?;
+        encoder
+            .finalize()
+            .map_err(|e| Error::Io(e, "unable to finalize compressed block"))?;
     }
     Ok(())
 }
