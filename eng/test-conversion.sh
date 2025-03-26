@@ -4,7 +4,7 @@
 # Licensed under the MIT License.
 #
 
-set -e
+set -ue -o pipefail
 
 cd $(dirname ${BASH_SOURCE[0]})/../
 
@@ -18,5 +18,7 @@ for SKU in $(cat ${IMAGES_TXT}); do
         ${CONVERT} --source-format lime --format lime_compressed ${SKU}.uncompressed.lime ${SKU}.recompressed.lime
         diff -q ${SKU}.lime ${SKU}.recompressed.lime
         rm ${SKU}.recompressed.lime ${SKU}.uncompressed.lime
+    else
+        echo missing ${SKU}.lime
     fi
 done
