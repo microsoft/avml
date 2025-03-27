@@ -18,7 +18,6 @@ SIZE=${3:-Standard_B1ls}
 function fail {
     echo ERROR
     if [ -f ${ERR} ]; then
-    ec
         cat "${ERR}"
     fi
     if [ -f ${LOG} ]; then
