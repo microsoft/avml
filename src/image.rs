@@ -8,7 +8,7 @@ use snap::read::FrameDecoder;
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::OpenOptionsExt as _;
 use std::{
-    fs::{File, OpenOptions},
+    fs::{File, OpenOptions, canonicalize},
     io::{Cursor, Read, Seek, SeekFrom, Write},
     path::Path,
 };
@@ -140,31 +140,38 @@ impl Header {
 /// - Reading from the source fails
 /// - Writing to the destination fails
 #[inline]
-fn copy<R, W>(mut size: usize, mut src: R, mut dst: W) -> Result<()>
+fn copy<R, W>(mut size: usize, align_src: bool, mut src: R, mut dst: W) -> Result<()>
 where
     R: Read,
     W: Write,
 {
-    let mut buf = vec![0; PAGE_SIZE];
-    while size >= PAGE_SIZE {
-        src.read_exact(&mut buf)
-            .map_err(|e| Error::Io(e, "unable to read memory page"))?;
-        dst.write_all(&buf)
-            .map_err(|e| Error::Io(e, "unable to write memory page"))?;
-        size = size.saturating_sub(PAGE_SIZE);
-    }
-    if size > 0 {
-        buf.resize(size, 0);
-        src.read_exact(&mut buf)
-            .map_err(|e| Error::Io(e, "unable to read memory page"))?;
-        dst.write_all(&buf)
-            .map_err(|e| Error::Io(e, "unable to write memory page"))?;
+    if align_src {
+        let mut buf = vec![0; PAGE_SIZE];
+        while size >= PAGE_SIZE {
+            src.read_exact(&mut buf)
+                .map_err(|e| Error::Io(e, "unable to read memory page"))?;
+            dst.write_all(&buf)
+                .map_err(|e| Error::Io(e, "unable to write memory page"))?;
+            size = size.saturating_sub(PAGE_SIZE);
+        }
+        if size > 0 {
+            buf.resize(size, 0);
+            src.read_exact(&mut buf)
+                .map_err(|e| Error::Io(e, "unable to read memory page"))?;
+            dst.write_all(&buf)
+                .map_err(|e| Error::Io(e, "unable to write memory page"))?;
+        }
+    } else {
+        let mut src = src.take(size as u64);
+        std::io::copy(&mut src, &mut dst)
+            .map_err(|e| Error::Io(e, "unable to copy memory pages"))?;
     }
     Ok(())
 }
 
 pub struct Image<R: Read + Seek, W: Write> {
     pub version: u32,
+    pub align_src: bool,
     pub src: R,
     pub dst: W,
 }
@@ -202,14 +209,28 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
         src_filename: &Path,
         dst_filename: &Path,
     ) -> Result<Image<File, File>> {
+        let src_filename =
+            canonicalize(src_filename).map_err(|e| Error::Io(e, "unable to canonicalize path"))?;
+        let align_src = [
+            Path::new("/dev/crash"),
+            Path::new("/dev/mem"),
+            Path::new("/dev/kcore"),
+        ]
+        .contains(&src_filename.as_path());
+
         let src = OpenOptions::new()
             .read(true)
-            .open(src_filename)
+            .open(&src_filename)
             .map_err(|e| Error::Io(e, "unable to open memory source"))?;
 
         let dst = Self::open_dst(dst_filename)?;
 
-        Ok(Image::<File, File> { version, src, dst })
+        Ok(Image::<File, File> {
+            version,
+            align_src,
+            src,
+            dst,
+        })
     }
 
     /// Writes multiple memory blocks to the destination file.
@@ -297,10 +318,10 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
         let size = header.size()?;
 
         if header.version == 1 {
-            copy(size, &mut self.src, &mut self.dst)?;
+            copy(size, self.align_src, &mut self.src, &mut self.dst)?;
         } else {
             let mut encoder = SnapCountWriter::new(&mut self.dst);
-            copy(size, &mut self.src, &mut encoder)?;
+            copy(size, self.align_src, &mut self.src, &mut encoder)?;
             encoder
                 .finalize()
                 .map_err(|e| Error::Io(e, "unable to finalize compressed block"))?;
@@ -314,7 +335,7 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
 
         // read the entire block into memory, but still read page by page
         let mut buf = Cursor::new(vec![0; size]);
-        copy(size, &mut self.src, &mut buf)?;
+        copy(size, self.align_src, &mut self.src, &mut buf)?;
         let buf = buf.into_inner();
 
         // if the entire block is zero, we can skip it
