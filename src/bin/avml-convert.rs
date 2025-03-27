@@ -155,12 +155,8 @@ fn main() -> Result<()> {
         (Format::Lime | Format::LimeCompressed, Format::Raw) => {
             convert_to_raw(&config.src, &config.dst)
         }
-        (Format::Lime, Format::LimeCompressed) => {
-            convert(&config.src, &config.dst, true)
-        }
-        (Format::LimeCompressed, Format::Lime) => {
-            convert(&config.src, &config.dst, false)
-        }
+        (Format::Lime, Format::LimeCompressed) => convert(&config.src, &config.dst, true),
+        (Format::LimeCompressed, Format::Lime) => convert(&config.src, &config.dst, false),
         (Format::Raw, Format::Lime) => convert_from_raw(&config.src, &config.dst, false),
         (Format::Raw, Format::LimeCompressed) => convert_from_raw(&config.src, &config.dst, true),
         (Format::Lime, Format::Lime)
