@@ -72,7 +72,15 @@ mod tests {
                 "unable to convert compressed length to u64",
             )
         })?);
-        assert_eq!(compressed_len, compressed_data.len() as u64);
+        assert_eq!(
+            compressed_len,
+            u64::try_from(compressed_data.len()).map_err(|_| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "unable to convert compressed length to u64",
+                )
+            })?
+        );
 
         assert_ne!(compressed_data, many_a);
 

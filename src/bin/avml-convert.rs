@@ -16,11 +16,12 @@ use std::{
     path::{Path, PathBuf},
 };
 
-fn convert(src: &Path, dst: &Path) -> Result<()> {
+fn convert(src: &Path, dst: &Path, compress: bool) -> Result<()> {
     let src_len = metadata(src)
         .map_err(|e| image::Error::Io(e, "unable to read source size"))?
         .len();
-    let mut image = image::Image::<File, File>::new(1, src, dst)?;
+    let version = if compress { 1 } else { 2 };
+    let mut image = image::Image::<File, File>::new(version, src, dst)?;
 
     loop {
         let current = image.src.stream_position().map_err(|e| {
@@ -154,9 +155,8 @@ fn main() -> Result<()> {
         (Format::Lime | Format::LimeCompressed, Format::Raw) => {
             convert_to_raw(&config.src, &config.dst)
         }
-        (Format::Lime, Format::LimeCompressed) | (Format::LimeCompressed, Format::Lime) => {
-            convert(&config.src, &config.dst)
-        }
+        (Format::Lime, Format::LimeCompressed) => convert(&config.src, &config.dst, true),
+        (Format::LimeCompressed, Format::Lime) => convert(&config.src, &config.dst, false),
         (Format::Raw, Format::Lime) => convert_from_raw(&config.src, &config.dst, false),
         (Format::Raw, Format::LimeCompressed) => convert_from_raw(&config.src, &config.dst, true),
         (Format::Lime, Format::Lime)

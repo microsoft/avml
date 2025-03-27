@@ -20,11 +20,10 @@
 #![warn(clippy::undocumented_unsafe_blocks)]
 #![warn(clippy::unused_trait_names)]
 #![warn(clippy::verbose_file_reads)]
-// #![warn(clippy::arithmetic_side_effects)]
-// #![warn(clippy::as_conversions)]
+#![warn(clippy::arithmetic_side_effects)]
+#![warn(clippy::as_conversions)]
+#![warn(clippy::pattern_type_mismatch)]
 // #![warn(clippy::missing_errors_doc)]
-// #![warn(clippy::pattern_type_mismatch)]
-// #![warn(clippy::std_instead_of_alloc)]
 
 #[cfg(target_family = "unix")]
 mod disk_usage;
