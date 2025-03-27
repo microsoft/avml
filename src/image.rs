@@ -162,7 +162,7 @@ where
                 .map_err(|e| Error::Io(e, "unable to write memory page"))?;
         }
     } else {
-        let mut src = src.take(size as u64);
+        let mut src = src.take(size.try_into()?);
         std::io::copy(&mut src, &mut dst)
             .map_err(|e| Error::Io(e, "unable to copy memory pages"))?;
     }
@@ -246,23 +246,26 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
     }
 
     fn write_block(&mut self, block: &Block) -> Result<()> {
-        let header = Header {
-            range: block.range.clone(),
-            version: self.version,
-        };
-
         if block.offset > 0 {
             self.src
                 .seek(SeekFrom::Start(block.offset))
                 .map_err(|e| Error::Io(e, "unable to see to page"))?;
         }
 
-        self.copy_block(header)?;
+        self.copy_block(block.range.clone())?;
         Ok(())
     }
 
     pub fn read_header(&mut self) -> Result<Header> {
         Header::read(&mut self.src)
+    }
+
+    fn write_header(&mut self, range: Range<u64>) -> Result<()> {
+        Header {
+            range,
+            version: self.version,
+        }
+        .write(&mut self.dst)
     }
 
     /// Copies a memory block from the source reader to the destination writer.
@@ -272,52 +275,44 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
     /// - Reading from the source fails
     /// - Writing to the destination fails
     /// - Size conversion from u64 to usize fails
-    pub fn copy_block(&mut self, mut header: Header) -> Result<()>
+    pub fn copy_block(&mut self, mut range: Range<u64>) -> Result<()>
     where
         R: Read,
         W: Write,
     {
-        if header.version == 2 {
-            while header.range.end.saturating_sub(header.range.start) > MAX_BLOCK_SIZE {
-                let range = Range {
-                    start: header.range.start,
-                    end: header
-                        .range
+        if self.version == 2 {
+            while range.end.saturating_sub(range.start) > MAX_BLOCK_SIZE {
+                let new_range = Range {
+                    start: range.start,
+                    end: range
                         .start
                         .checked_add(MAX_BLOCK_SIZE)
                         .ok_or(Error::TooLarge)?,
                 };
-                self.copy_block_impl(&Header {
-                    range: range.clone(),
-                    version: header.version,
-                })?;
-                header.range.start = header
-                    .range
-                    .start
-                    .checked_add(MAX_BLOCK_SIZE)
-                    .ok_or(Error::TooLarge)?;
+                self.copy_block_impl(new_range)?;
+                range.start = range.start.saturating_add(MAX_BLOCK_SIZE);
             }
         }
-        if header.range.end > header.range.start {
-            self.copy_block_impl(&header)?;
+        if range.end > range.start {
+            self.copy_block_impl(range)?;
         }
 
         Ok(())
     }
 
-    fn copy_block_impl(&mut self, header: &Header) -> Result<()> {
-        if header.size()? as u64 > MAX_BLOCK_SIZE {
-            self.copy_large_block(header)
+    fn copy_block_impl(&mut self, range: Range<u64>) -> Result<()> {
+        if range_len(range.clone()) > MAX_BLOCK_SIZE {
+            self.copy_large_block(range)
         } else {
-            self.copy_if_nonzero(header)
+            self.copy_if_nonzero(range)
         }
     }
 
-    fn copy_large_block(&mut self, header: &Header) -> Result<()> {
-        header.write(&mut self.dst)?;
-        let size = header.size()?;
+    fn copy_large_block(&mut self, range: Range<u64>) -> Result<()> {
+        self.write_header(range.clone())?;
+        let size = range_usize(range.clone())?;
 
-        if header.version == 1 {
+        if self.version == 1 {
             copy(size, self.align_src, &mut self.src, &mut self.dst)?;
         } else {
             let mut encoder = SnapCountWriter::new(&mut self.dst);
@@ -330,8 +325,9 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
     }
 
     // read the entire block into memory, and only write it if it's not empty
-    fn copy_if_nonzero(&mut self, header: &Header) -> Result<()> {
-        let size = header.size()?;
+    fn copy_if_nonzero(&mut self, range: Range<u64>) -> Result<()> {
+        self.write_header(range.clone())?;
+        let size = range_usize(range.clone())?;
 
         // read the entire block into memory, but still read page by page
         let mut buf = Cursor::new(vec![0; size]);
@@ -343,8 +339,7 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
             return Ok(());
         }
 
-        header.write(&mut self.dst)?;
-        if header.version == 1 {
+        if self.version == 1 {
             self.dst
                 .write_all(&buf)
                 .map_err(|e| Error::Io(e, "unable to write non-zero block"))?;
@@ -366,21 +361,13 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
         new_header.version = if header.version == 1 { 2 } else { 1 };
         match header.version {
             1 => {
-                self.copy_block(new_header)?;
+                self.copy_block(header.range)?;
             }
             2 => {
-                new_header.write(&mut self.dst)?;
+                self.write_header(new_header.range.clone())?;
                 {
-                    let size = new_header.size().map_err(|_| {
-                        Error::Io(
-                            std::io::Error::new(
-                                std::io::ErrorKind::InvalidData,
-                                "unable to convert block size to u64",
-                            ),
-                            "unable to convert block size to u64",
-                        )
-                    })?;
-                    let mut decoder = FrameDecoder::new(&mut self.src).take(size as u64);
+                    let size = range_len(new_header.range.clone());
+                    let mut decoder = FrameDecoder::new(&mut self.src).take(size);
                     std::io::copy(&mut decoder, &mut self.dst)
                         .map_err(|e| Error::Io(e, "unable to copy compressed data"))?;
                 }
@@ -393,6 +380,14 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
 
         Ok(())
     }
+}
+
+fn range_len(value: Range<u64>) -> u64 {
+    value.end.saturating_sub(value.start)
+}
+
+fn range_usize(value: Range<u64>) -> Result<usize> {
+    Ok(usize::try_from(value.end.saturating_sub(value.start))?)
 }
 
 #[cfg(test)]
