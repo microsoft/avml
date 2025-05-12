@@ -262,9 +262,9 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "clap"
-version = "4.5.35"
+version = "4.5.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8aa86934b44c19c50f87cc2790e19f54f7a67aedb64101c2e1a2e5ecfb73944"
+checksum = "eccb054f56cbd38340b380d4a8e69ef1f02f1af43db2f0cc817a4774d80ae071"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -272,9 +272,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.5.35"
+version = "4.5.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2414dbb2dd0695280da6ea9261e327479e9d37b0630f6b53ba2a11c60c679fd9"
+checksum = "efd9466fac8543255d3b1fcad4762c5e116ffe808c8a3043d4263cd4fd4862a2"
 dependencies = [
  "anstyle",
  "clap_lex",
@@ -871,14 +871,12 @@ checksum = "64e9829a50b42bb782c1df523f78d332fe371b10c661e78b7a3c34b0198e9fac"
 
 [[package]]
 name = "insta"
-version = "1.42.2"
+version = "1.43.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "50259abbaa67d11d2bcafc7ba1d094ed7a0c70e3ce893f0d0997f73558cb3084"
+checksum = "154934ea70c58054b556dd430b99a98c2a7ff5309ac9891597e339b5c28f4371"
 dependencies = [
  "console",
- "linked-hash-map",
  "once_cell",
- "pin-project",
  "serde",
  "similar",
 ]
@@ -916,15 +914,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.171"
+version = "0.2.172"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c19937216e9d3aa9956d9bb8dfc0b0c8beb6058fc4f7a4dc4d850edf86a237d6"
-
-[[package]]
-name = "linked-hash-map"
-version = "0.5.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0717cef1bc8b636c6e1c1bbdefc09e6322da8a9321966e8928ef80d20f7f770f"
+checksum = "d750af042f7ef4f724306de029d18836c26c1765a54a6a3f094cbd23a7267ffa"
 
 [[package]]
 name = "linux-raw-sys"
@@ -1614,9 +1606,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-util"
-version = "0.7.14"
+version = "0.7.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b9590b93e6fcc1739458317cccd391ad3955e2bde8913edf6f95f9e65a8f034"
+checksum = "66a539a9ad6d5d281510d5bd368c973d636c02dbf8a67300bfb6b950696ad7df"
 dependencies = [
  "bytes",
  "futures-core",
