@@ -16,9 +16,9 @@ use core::{
 use elf::{abi::PT_LOAD, endian::NativeEndian, segment::ProgramHeader};
 #[cfg(not(target_family = "unix"))]
 use std::env::consts::OS;
-use std::io::{Read, Seek, Write};
 use std::{
     fs::{File, OpenOptions, metadata},
+    io::{Read, Seek, Write},
     path::{Path, PathBuf},
 };
 
@@ -265,7 +265,7 @@ impl<'a, 'b> Snapshot<'a, 'b> {
         'outer: for range in ranges {
             let mut range = range.clone();
 
-            'inner: for header in headers {
+            for header in headers {
                 match (
                     header.range.contains(&range.start),
                     // TODO: ranges is currently inclusive, but not a
@@ -296,10 +296,8 @@ impl<'a, 'b> Snapshot<'a, 'b> {
                         result.push(block);
                         range.start = header.range.end;
                     }
-                    _ => {
-                        continue 'inner;
-                    }
-                };
+                    _ => {}
+                }
             }
         }
 
