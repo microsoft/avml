@@ -34,12 +34,14 @@ pub mod iomem;
 mod snapshot;
 mod upload;
 
-pub use crate::errors::Error;
-pub use crate::snapshot::{Snapshot, Source};
 #[cfg(feature = "blobstore")]
 pub use crate::upload::blobstore::{BlobUploader, DEFAULT_CONCURRENCY};
 #[cfg(feature = "put")]
 pub use crate::upload::http::put;
+pub use crate::{
+    errors::Error,
+    snapshot::{Snapshot, Source},
+};
 
 pub const ONE_MB: usize = 1024 * 1024;
 

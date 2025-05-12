@@ -87,7 +87,7 @@ impl Header {
         }
         if !(magic == LIME_MAGIC && version == 1 || magic == AVML_MAGIC && version == 2) {
             return Err(Error::UnsupportedFormat);
-        };
+        }
 
         Ok(Self {
             range: Range { start, end },
