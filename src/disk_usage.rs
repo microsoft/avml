@@ -134,7 +134,7 @@ fn disk_usage(path: &Path) -> Result<DiskUsage> {
     // SAFETY: this is the only way to initialize the statfs64 struct
     let mut statfs: libc::statfs64 = unsafe { zeroed() };
     // SAFETY: calling statfs64 is ok as long as the path is valid
-    let ret = unsafe { libc::statfs64(path_as_cstr.as_ptr(), &mut statfs) };
+    let ret = unsafe { libc::statfs64(path_as_cstr.as_ptr(), &raw mut statfs) };
 
     if ret < 0 {
         return Err(Error::Disk(std::io::Error::last_os_error()));
