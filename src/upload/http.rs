@@ -3,7 +3,7 @@
 
 use crate::upload::status::Status;
 use futures::stream::StreamExt as _;
-use reqwest::{Body, Client, StatusCode};
+use reqwest::{Body, Client};
 use std::path::{Path, PathBuf};
 use tokio::fs::File;
 use tokio_util::codec::{BytesCodec, FramedRead};
@@ -57,7 +57,7 @@ pub async fn put(filename: &Path, url: &Url) -> Result<(), Error> {
         .send()
         .await?;
 
-    if res.status() != StatusCode::CREATED {
+    if !res.status().is_success() {
         return Err(Error::UnexpectedStatusCode {
             status: res.status().as_u16(),
         });
