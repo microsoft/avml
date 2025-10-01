@@ -31,7 +31,7 @@ thiserror = "2.0"
 libc = "0.2"
 
 async-channel = {version="2.5", optional=true}
-azure_core = {version="0.21", optional=true, default-features=false}
+azure_core = {version="0.28", optional=true, default-features=false}
 azure_storage_blobs = {version="0.21", optional=true, default-features=false}
 indicatif = {version="0.18", optional=true, default-features=false}
 native-tls = {version="0.2", features=["vendored"], optional=true, default-features=false}
