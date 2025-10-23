@@ -14,6 +14,8 @@ env:
 
 jobs:
   lint:
+    permissions:
+        contents: read
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v5.0.0
@@ -38,6 +40,8 @@ jobs:
           target/*/release/avml-convert
           target/*/release/avml-upload
   arm64:
+    permissions:
+        contents: read
     runs-on: ubuntu-22.04-arm
     steps:
     - uses: actions/checkout@v5.0.0
@@ -56,6 +60,8 @@ jobs:
           target/*/release/avml-convert
           target/*/release/avml-upload
   windows:
+    permissions:
+        contents: read
     runs-on: windows-latest
     steps:
     - name: Set git to use LF
