@@ -18,13 +18,13 @@ jobs:
         contents: read
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v5.0.0
+    - uses: actions/checkout@v5.0.1
     - name: lint
       run: eng/lint.sh
   x64:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v5.0.0
+    - uses: actions/checkout@v5.0.1
     - uses: Swatinem/rust-cache@v2
     - name: build
       run: eng/ci.sh
@@ -44,7 +44,7 @@ jobs:
         contents: read
     runs-on: ubuntu-22.04-arm
     steps:
-    - uses: actions/checkout@v5.0.0
+    - uses: actions/checkout@v5.0.1
     - uses: Swatinem/rust-cache@v2
     - name: build
       run: eng/ci.sh
@@ -68,7 +68,7 @@ jobs:
       run: |
         git config --global core.autocrlf false
         git config --global core.eol lf
-    - uses: actions/checkout@v5.0.0
+    - uses: actions/checkout@v5.0.1
     - uses: Swatinem/rust-cache@v2
     - name: build avml-convert
       run: cargo build --release --bin avml-convert --locked
