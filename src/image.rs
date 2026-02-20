@@ -214,7 +214,7 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
         let align_src = [
             Path::new("/dev/crash"),
             Path::new("/dev/mem"),
-            Path::new("/dev/kcore"),
+            Path::new("/proc/kcore"),
         ]
         .contains(&src_filename.as_path());
 
