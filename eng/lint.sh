@@ -8,11 +8,12 @@ set -uvex -o pipefail
 
 cd $(dirname ${BASH_SOURCE[0]})/../
 
+rustup +stable component add rustfmt
 cargo fmt -- --check
-cargo clippy --locked --all-targets --all-features -- -D warnings -D clippy::pedantic -A clippy::missing_errors_doc
+cargo +stable clippy --locked --all-targets --all-features -- -D warnings -D clippy::pedantic -A clippy::missing_errors_doc
 
-cargo install typos-cli
+which typos || cargo install typos-cli
 typos
 
-cargo install cargo-semver-checks --locked
+which cargo-semver-checks || cargo install cargo-semver-checks --locked
 cargo semver-checks check-release
