@@ -4,6 +4,8 @@
 use crate::io::snappy::SnapCountWriter;
 use byteorder::{ByteOrder as _, LittleEndian, ReadBytesExt as _};
 use core::ops::Range;
+#[cfg(target_family = "unix")]
+use libc::O_NOFOLLOW;
 use snap::read::FrameDecoder;
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::OpenOptionsExt as _;
@@ -191,6 +193,7 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
     fn open_dst(path: &Path) -> Result<File> {
         OpenOptions::new()
             .mode(0o600)
+            .custom_flags(O_NOFOLLOW)
             .write(true)
             .create(true)
             .truncate(true)
