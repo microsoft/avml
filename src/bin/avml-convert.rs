@@ -198,7 +198,7 @@ mod tests {
     use rand::{RngCore, SeedableRng, rngs::SmallRng};
     use std::io::Cursor;
 
-    fn memory_image<'a>(src: &'a [u8]) -> image::Image<Cursor<&'a [u8]>, Cursor<Vec<u8>>> {
+    fn memory_image(src: &[u8]) -> image::Image<Cursor<&[u8]>, Cursor<Vec<u8>>> {
         image::Image {
             version: 1,
             align_src: false,
