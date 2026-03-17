@@ -43,6 +43,7 @@ type Result<T> = core::result::Result<T, Error>;
 
 pub const MAX_BLOCK_SIZE: u64 = 0x1000 * 0x1000;
 const PAGE_SIZE: usize = 0x1000;
+const HEADER_LEN: usize = 32;
 const LIME_MAGIC: u32 = 0x4c69_4d45; // EMiL as u32le
 const AVML_MAGIC: u32 = 0x4c4d_5641; // AVML as u32le
 
@@ -103,7 +104,7 @@ impl Header {
             2 => AVML_MAGIC,
             _ => return Err(Error::UnimplementedVersion),
         };
-        let mut bytes = [0; 32];
+        let mut bytes = [0; HEADER_LEN];
         LittleEndian::write_u32_into(&[magic, self.version], &mut bytes[..8]);
         LittleEndian::write_u64_into(
             &[self.range.start, self.range.end.saturating_sub(1), 0],
@@ -329,7 +330,6 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
 
     // read the entire block into memory, and only write it if it's not empty
     fn copy_if_nonzero(&mut self, range: Range<u64>) -> Result<()> {
-        self.write_header(range.clone())?;
         let size = range_usize(range.clone())?;
 
         // read the entire block into memory, but still read page by page
@@ -342,6 +342,7 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
             return Ok(());
         }
 
+        self.write_header(range.clone())?;
         if self.version == 1 {
             self.dst
                 .write_all(&buf)
@@ -360,16 +361,14 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
 
     pub fn convert_block(&mut self) -> Result<()> {
         let header = self.read_header()?;
-        let mut new_header = header.clone();
-        new_header.version = if header.version == 1 { 2 } else { 1 };
         match header.version {
             1 => {
                 self.copy_block(header.range)?;
             }
             2 => {
-                self.write_header(new_header.range.clone())?;
+                self.write_header(header.range.clone())?;
                 {
-                    let size = range_len(new_header.range.clone());
+                    let size = range_len(header.range.clone());
                     let mut decoder = FrameDecoder::new(&mut self.src).take(size);
                     std::io::copy(&mut decoder, &mut self.dst)
                         .map_err(|e| Error::Io(e, "unable to copy compressed data"))?;
@@ -396,6 +395,7 @@ fn range_usize(value: Range<u64>) -> Result<usize> {
 #[cfg(test)]
 mod tests {
     use core::ops::Range;
+    use std::io::Cursor;
 
     #[test]
     fn encode_header_v1() {
@@ -423,5 +423,23 @@ mod tests {
             version: 2,
         };
         assert!(matches!(header.encode(), Ok(x) if x == *expected));
+    }
+
+    #[test]
+    fn copy_block_skips_all_zero_ranges() -> super::Result<()> {
+        for version in [1, 2] {
+            let src = Cursor::new(vec![0; 0x4000]);
+            let dst = Cursor::new(vec![]);
+            let mut image = super::Image {
+                version,
+                align_src: false,
+                src,
+                dst,
+            };
+            image.copy_block(0..0x4000)?;
+            assert!(image.dst.get_ref().is_empty());
+        }
+
+        Ok(())
     }
 }
