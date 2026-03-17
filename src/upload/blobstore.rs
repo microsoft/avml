@@ -252,7 +252,9 @@ impl BlobUploader {
             ..Default::default()
         };
 
-        self.client.commit_block_list(block_list.try_into()?, None).await?;
+        self.client
+            .commit_block_list(block_list.try_into()?, None)
+            .await?;
 
         Ok(())
     }
@@ -332,13 +334,14 @@ impl BlobUploader {
             let chunk_len = upload_chunk.data.len();
 
             let content_length = chunk_len.try_into()?;
-            let result = client.stage_block(
-                upload_chunk.id.as_ref(),
-                content_length,
-                upload_chunk.data.into(),
-                None,
-            )
-            .await;
+            let result = client
+                .stage_block(
+                    upload_chunk.id.as_ref(),
+                    content_length,
+                    upload_chunk.data.into(),
+                    None,
+                )
+                .await;
 
             // as soon as any error is seen (after retrying), bail out and stop other uploaders
             if result.is_err() {
