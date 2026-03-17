@@ -4,7 +4,7 @@
 use crate::{ONE_MB, upload::status::Status};
 use async_channel::{Receiver, Sender, bounded};
 use azure_core::error::Error as AzureError;
-use azure_storage_blob::{BlobClient, BlockBlobClient, models::BlockLookupList};
+use azure_storage_blob::{BlobClient, models::BlockLookupList};
 use bytes::Bytes;
 use core::cmp;
 use futures::future::try_join_all;
@@ -163,7 +163,7 @@ fn calc_concurrency(
 /// ```
 #[derive(Clone)]
 pub struct BlobUploader {
-    client: Arc<BlockBlobClient>,
+    client: Arc<BlobClient>,
     size: usize,
     block_size: Option<usize>,
     concurrency: usize,
@@ -190,7 +190,7 @@ impl BlobUploader {
         let (sender, receiver) = bounded::<UploadBlock>(1);
 
         Self {
-            client: Arc::new(client.block_blob_client()),
+            client: Arc::new(client),
             size: DEFAULT_FILE_SIZE,
             block_size: None,
             concurrency: DEFAULT_CONCURRENCY,
@@ -252,7 +252,8 @@ impl BlobUploader {
             ..Default::default()
         };
 
-        self.client
+        let client = self.client.block_blob_client();
+        client
             .commit_block_list(block_list.try_into()?, None)
             .await?;
 
@@ -325,10 +326,12 @@ impl BlobUploader {
     }
 
     async fn block_uploader(
-        client: Arc<BlockBlobClient>,
+        client: Arc<BlobClient>,
         receiver: Receiver<UploadBlock>,
         status: Status,
     ) -> Result<()> {
+        let client = client.block_blob_client();
+
         // the channel will respond with an Err to indicate the channel is closed
         while let Ok(upload_chunk) = receiver.recv().await {
             let chunk_len = upload_chunk.data.len();
