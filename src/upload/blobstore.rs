@@ -4,11 +4,11 @@
 use crate::{ONE_MB, upload::status::Status};
 use async_channel::{Receiver, Sender, bounded};
 use azure_core::error::Error as AzureError;
-use azure_storage_blobs::prelude::{BlobBlockType, BlobClient, BlockId, BlockList};
+use azure_storage_blob::{BlobClient, BlockBlobClient, models::BlockLookupList};
 use bytes::Bytes;
 use core::cmp;
 use futures::future::try_join_all;
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 use tokio::{
     fs::File,
     io::{AsyncRead, AsyncReadExt as _},
@@ -163,7 +163,7 @@ fn calc_concurrency(
 /// ```
 #[derive(Clone)]
 pub struct BlobUploader {
-    client: BlobClient,
+    client: Arc<BlockBlobClient>,
     size: usize,
     block_size: Option<usize>,
     concurrency: usize,
@@ -178,19 +178,19 @@ impl BlobUploader {
     /// Returns an error if:
     /// - The URL cannot be parsed as a valid Azure SAS URL
     pub fn new(sas: &Url) -> Result<Self> {
-        let blob_client = BlobClient::from_sas_url(sas)?;
+        let blob_client = BlobClient::from_url(sas.clone(), None, None)?;
         Ok(Self::with_blob_client(blob_client))
     }
 
-    /// Create a ``BlobUploader`` with a ``BlobClient`` from ``azure_storage_blobs``.
+    /// Create a ``BlobUploader`` with a ``BlobClient`` from ``azure_storage_blob``.
     ///
-    /// Ref: <https://docs.rs/azure_storage_blobs/latest/azure_storage_blobs/prelude/struct.BlobClient.html>
+    /// Ref: <https://docs.rs/azure_storage_blob/latest/azure_storage_blob/struct.BlobClient.html>
     #[must_use]
     pub fn with_blob_client(client: BlobClient) -> Self {
         let (sender, receiver) = bounded::<UploadBlock>(1);
 
         Self {
-            client,
+            client: Arc::new(client.block_blob_client()),
             size: DEFAULT_FILE_SIZE,
             block_size: None,
             concurrency: DEFAULT_CONCURRENCY,
@@ -247,14 +247,12 @@ impl BlobUploader {
     }
 
     async fn finalize(self, block_ids: Vec<Bytes>) -> Result<()> {
-        let blocks = block_ids
-            .into_iter()
-            .map(|x| BlobBlockType::Uncommitted(BlockId::new(x)))
-            .collect::<Vec<_>>();
+        let block_list = BlockLookupList {
+            latest: Some(block_ids.into_iter().map(|x| x.to_vec()).collect()),
+            ..Default::default()
+        };
 
-        let block_list = BlockList { blocks };
-
-        self.client.put_block_list(block_list).await?;
+        self.client.commit_block_list(block_list.try_into()?, None).await?;
 
         Ok(())
     }
@@ -325,7 +323,7 @@ impl BlobUploader {
     }
 
     async fn block_uploader(
-        client: BlobClient,
+        client: Arc<BlockBlobClient>,
         receiver: Receiver<UploadBlock>,
         status: Status,
     ) -> Result<()> {
@@ -333,7 +331,14 @@ impl BlobUploader {
         while let Ok(upload_chunk) = receiver.recv().await {
             let chunk_len = upload_chunk.data.len();
 
-            let result = client.put_block(upload_chunk.id, upload_chunk.data).await;
+            let content_length = chunk_len.try_into()?;
+            let result = client.stage_block(
+                upload_chunk.id.as_ref(),
+                content_length,
+                upload_chunk.data.into(),
+                None,
+            )
+            .await;
 
             // as soon as any error is seen (after retrying), bail out and stop other uploaders
             if result.is_err() {
