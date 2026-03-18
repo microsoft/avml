@@ -88,7 +88,23 @@ const REASONABLE_BLOCK_SIZE: usize = ONE_MB.saturating_mul(100);
 /// concurrency will get disabled.
 const MEMORY_THRESHOLD: usize = 500 * ONE_MB;
 
-/// Default anticipated upload size before the actual file size is known.
+/// Heuristic "very large file" size used when the actual file size is not yet
+/// known (for example, before probing a file or when size discovery fails).
+/// This value feeds into block-size and concurrency calculations so that, in
+/// the worst case, we behave as if we are uploading a large image while still
+/// staying well below `BLOB_MAX_FILE_SIZE`.
+///
+/// 1 TB is chosen as a conservative upper-bound estimate:
+/// - It is large enough to exercise the "large upload" code paths, ensuring
+///   that concurrency and block sizing are not overly optimistic when size
+///   information is missing.
+/// - It is small enough compared to Azure's maximum blob size that the
+///   resulting configuration will not violate service limits.
+///
+/// Once the real file size is known, it is validated against
+/// `BLOB_MAX_FILE_SIZE` and used for the final concurrency/block-size
+/// decisions; this constant only affects the initial tuning in the absence of
+/// reliable size information.
 const DEFAULT_FILE_SIZE: usize = 1024 * 1024 * 1024 * 1024;
 
 fn calc_concurrency(
@@ -125,6 +141,16 @@ fn calc_concurrency(
     Ok((block_size, upload_concurrency))
 }
 
+/// A seekable file-backed stream used for blob uploads.
+///
+/// `FileStream` is `Clone` because the Azure core body/retry machinery may need
+/// to duplicate the stream. All clones share the same underlying file handle
+/// and read cursor state via `Arc<Mutex<...>>`.
+///
+/// Invariants:
+/// - At most one clone is actively reading from the stream at any time.
+/// - All reads go through the shared `read_state` so that the current cursor
+///   position is coordinated between clones.
 #[derive(Clone)]
 struct FileStream {
     handle: Arc<Mutex<File>>,
@@ -195,9 +221,9 @@ impl futures::io::AsyncRead for FileStream {
     ) -> Poll<std::io::Result<usize>> {
         let this = self.get_mut();
         let Ok(mut state) = this.read_state.try_lock() else {
-            return Poll::Ready(Err(std::io::Error::other(
-                "read_state mutex should not be locked across poll calls",
-            )));
+            // Another task is currently holding `read_state`; yield and try again later
+            cx.waker().wake_by_ref();
+            return Poll::Pending;
         };
 
         loop {
