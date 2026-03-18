@@ -17,7 +17,7 @@ default = ["put", "blobstore", "native-tls", "status"]
 put = ["dep:reqwest", "reqwest?/stream", "dep:url", "dep:tokio", "dep:tokio-util"]
 blobstore = ["dep:url", "dep:azure_core", "dep:azure_storage_blob", "dep:tokio", "dep:tokio-util", "dep:async-trait"]
 status = ["dep:indicatif"]
-native-tls = ["dep:native-tls", "azure_core?/reqwest_native_tls"]
+native-tls = ["dep:native-tls", "azure_core?/reqwest_native_tls", "reqwest?/native-tls-vendored"]
 
 [dependencies]
 async-trait = {version="0.1", optional=true}
