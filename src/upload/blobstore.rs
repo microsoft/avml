@@ -88,25 +88,6 @@ const REASONABLE_BLOCK_SIZE: usize = ONE_MB.saturating_mul(100);
 /// concurrency will get disabled.
 const MEMORY_THRESHOLD: usize = 500 * ONE_MB;
 
-/// Heuristic "very large file" size used when the actual file size is not yet
-/// known (for example, before probing a file or when size discovery fails).
-/// This value feeds into block-size and concurrency calculations so that, in
-/// the worst case, we behave as if we are uploading a large image while still
-/// staying well below `BLOB_MAX_FILE_SIZE`.
-///
-/// 1 TB is chosen as a conservative upper-bound estimate:
-/// - It is large enough to exercise the "large upload" code paths, ensuring
-///   that concurrency and block sizing are not overly optimistic when size
-///   information is missing.
-/// - It is small enough compared to Azure's maximum blob size that the
-///   resulting configuration will not violate service limits.
-///
-/// Once the real file size is known, it is validated against
-/// `BLOB_MAX_FILE_SIZE` and used for the final concurrency/block-size
-/// decisions; this constant only affects the initial tuning in the absence of
-/// reliable size information.
-const DEFAULT_FILE_SIZE: usize = 1024 * 1024 * 1024 * 1024;
-
 fn calc_concurrency(
     file_size: usize,
     block_size: Option<usize>,
@@ -280,7 +261,6 @@ impl futures::io::AsyncRead for FileStream {
 #[derive(Clone)]
 pub struct BlobUploader {
     client: Arc<BlobClient>,
-    size: usize,
     block_size: Option<usize>,
     concurrency: usize,
 }
@@ -303,16 +283,9 @@ impl BlobUploader {
     pub fn with_blob_client(client: BlobClient) -> Self {
         Self {
             client: Arc::new(client),
-            size: DEFAULT_FILE_SIZE,
             block_size: None,
             concurrency: DEFAULT_CONCURRENCY,
         }
-    }
-
-    /// Specify the size of the file to upload (in bytes)
-    #[must_use]
-    pub fn size(self, size: usize) -> Self {
-        Self { size, ..self }
     }
 
     /// Specify the block size in multiples of 1MB
@@ -337,14 +310,13 @@ impl BlobUploader {
     /// - The file size cannot be converted to a usize
     /// - The file is too large for Azure Blob Storage
     /// - There is a failure during the upload process
-    pub async fn upload_file(mut self, filename: &Path) -> Result<()> {
+    pub async fn upload_file(self, filename: &Path) -> Result<()> {
         let file = File::open(filename).await?;
         let file_size = file.metadata().await?.len().try_into()?;
-        self.size = file_size;
 
         let block_size = self.block_size.map(|x| x.saturating_mul(ONE_MB));
         let (block_size, uploaders_count) =
-            calc_concurrency(self.size, block_size, self.concurrency)?;
+            calc_concurrency(file_size, block_size, self.concurrency)?;
 
         let stream = FileStream::new(file, DEFAULT_BUFFER_SIZE).await?;
         let stream: Box<dyn SeekableStream> = Box::new(stream);
