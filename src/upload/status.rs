@@ -30,6 +30,13 @@ impl Status {
         Self { bar, total }
     }
 
+    #[cfg(feature = "blobstore")]
+    pub fn reset(&self) {
+        if let Some(ref bar) = self.bar {
+            bar.reset();
+        }
+    }
+
     pub fn inc(&self, n: usize) {
         if let Some(ref bar) = self.bar {
             bar.inc(n.try_into().unwrap_or(u64::MAX));
@@ -51,4 +58,8 @@ impl Status {
     }
     #[allow(clippy::unused_self)]
     pub fn inc(&self, _n: usize) {}
+
+    #[cfg(feature = "blobstore")]
+    #[allow(clippy::unused_self)]
+    pub fn reset(&self) {}
 }
