@@ -13,7 +13,7 @@ edition = "2024"
 rust-version = "1.88.0"
 
 [features]
-default = ["put", "blobstore", "native-tls", "status"]
+default = ["put", "blobstore", "native-tls"]
 put = ["dep:reqwest", "reqwest?/stream", "dep:url", "dep:tokio", "dep:tokio-util"]
 blobstore = ["dep:url", "dep:azure_core", "dep:azure_storage_blob", "dep:tokio", "dep:tokio-util", "dep:async-trait"]
 status = ["dep:indicatif"]
