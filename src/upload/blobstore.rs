@@ -38,30 +38,44 @@ pub enum Error {
 
     #[error(transparent)]
     IntConversion(#[from] core::num::TryFromIntError),
+
+    #[error(transparent)]
+    InvalidUrl(#[from] url::ParseError),
 }
 
 type Result<T> = core::result::Result<T, Error>;
 
+#[allow(clippy::expect_used)]
+const ONE_MB_NZ: NonZeroUsize = NonZeroUsize::new(ONE_MB).expect("ONE_MB must be non-zero");
+
 /// Maximum number of blocks
 ///
 /// <https://docs.microsoft.com/en-us/azure/storage/blobs/scalability-targets#scale-targets-for-blob-storage>
-const BLOB_MAX_BLOCKS: usize = 50_000;
+#[allow(clippy::expect_used)]
+const BLOB_MAX_BLOCKS: NonZeroUsize =
+    NonZeroUsize::new(50_000).expect("blob max blocks must be non-zero");
 
 /// Maximum size of any single block
 ///
 /// <https://docs.microsoft.com/en-us/azure/storage/blobs/scalability-targets#scale-targets-for-blob-storage>
-const BLOB_MAX_BLOCK_SIZE: usize = ONE_MB.saturating_mul(4000);
+#[allow(clippy::expect_used)]
+const BLOB_MAX_BLOCK_SIZE: NonZeroUsize = ONE_MB_NZ.saturating_mul(
+    NonZeroUsize::new(4000).expect("blob max block size multiplier must be non-zero"),
+);
 
 /// Maximum total size of a file
 ///
 /// <https://docs.microsoft.com/en-us/azure/storage/blobs/scalability-targets#scale-targets-for-blob-storage>
-const BLOB_MAX_FILE_SIZE: usize = BLOB_MAX_BLOCKS.saturating_mul(BLOB_MAX_BLOCK_SIZE);
+#[allow(clippy::expect_used)]
+const BLOB_MAX_FILE_SIZE: NonZeroUsize = BLOB_MAX_BLOCKS.saturating_mul(BLOB_MAX_BLOCK_SIZE);
 
 /// Minimum block size, which is required to trigger the "high-throughput block
 /// blobs" feature on all storage accounts
 ///
 /// <https://azure.microsoft.com/en-us/blog/high-throughput-with-azure-blob-storage/>
-const BLOB_MIN_BLOCK_SIZE: usize = ONE_MB.saturating_mul(5);
+#[allow(clippy::expect_used)]
+const BLOB_MIN_BLOCK_SIZE: NonZeroUsize = ONE_MB_NZ
+    .saturating_mul(NonZeroUsize::new(5).expect("blob min block size multiplier must be non-zero"));
 
 /// Azure's default max request rate for a storage account is 20,000 per second.
 /// By keeping to 10 or fewer concurrent upload threads, AVML can be used to
@@ -69,7 +83,9 @@ const BLOB_MIN_BLOCK_SIZE: usize = ONE_MB.saturating_mul(5);
 /// VM scaleset) to a single default storage account.
 ///
 /// <https://docs.microsoft.com/en-us/azure/storage/common/scalability-targets-standard-account#scale-targets-for-standard-storage-accounts>
-const MAX_CONCURRENCY: usize = 10;
+#[allow(clippy::expect_used)]
+const MAX_CONCURRENCY: NonZeroUsize =
+    NonZeroUsize::new(10).expect("max concurrency must be non-zero");
 
 /// Azure's default max request rate for a storage account is 20,000 per second.
 /// By keeping to 10 or fewer concurrent upload threads, AVML can be used to
@@ -77,49 +93,68 @@ const MAX_CONCURRENCY: usize = 10;
 /// VM scaleset) to a single default storage account.
 ///
 /// <https://docs.microsoft.com/en-us/azure/storage/common/scalability-targets-standard-account#scale-targets-for-standard-storage-accounts>
-pub const DEFAULT_CONCURRENCY: usize = 10;
+#[allow(clippy::expect_used)]
+pub const DEFAULT_CONCURRENCY: NonZeroUsize =
+    NonZeroUsize::new(10).expect("default concurrency must be non-zero");
 
-/// As chunks stay in memory until the upload is complete, as to enable
-/// automatic retries in the case of TCP or HTTP errors, chunk sizes for huge
-/// files are capped to 100MB each.
-const REASONABLE_BLOCK_SIZE: usize = ONE_MB.saturating_mul(100);
+/// Keep at most 500MB of block data in flight across all uploaders.
+#[allow(clippy::expect_used)]
+const MEMORY_THRESHOLD: NonZeroUsize = ONE_MB_NZ
+    .saturating_mul(NonZeroUsize::new(500).expect("memory threshold multiplier must be non-zero"));
 
-/// Try to keep under 500MB in flight. If that's not possible due to block size,
-/// concurrency will get disabled.
-const MEMORY_THRESHOLD: usize = 500 * ONE_MB;
+fn calc_block_size(
+    file_size: NonZeroUsize,
+    block_size: Option<NonZeroUsize>,
+) -> Result<NonZeroUsize> {
+    let block_size = match block_size {
+        Some(block_size) => block_size,
+        None => NonZeroUsize::new(file_size.get().div_ceil(BLOB_MAX_BLOCKS.get()))
+            .ok_or(Error::TooLarge)?,
+    };
+
+    Ok(cmp::min(
+        cmp::max(block_size, BLOB_MIN_BLOCK_SIZE),
+        BLOB_MAX_BLOCK_SIZE,
+    ))
+}
 
 fn calc_concurrency(
-    file_size: usize,
-    block_size: Option<usize>,
-    upload_concurrency: usize,
-) -> Result<(usize, usize)> {
+    file_size: NonZeroUsize,
+    block_size: Option<NonZeroUsize>,
+    upload_concurrency: Option<NonZeroUsize>,
+) -> Result<(NonZeroUsize, NonZeroUsize)> {
     if file_size > BLOB_MAX_FILE_SIZE {
         return Err(Error::TooLarge);
     }
+    let block_size = calc_block_size(file_size, block_size)?;
 
-    let block_size = match block_size {
-        Some(0) | None => match file_size {
-            x if x < BLOB_MIN_BLOCK_SIZE * BLOB_MAX_BLOCKS => BLOB_MIN_BLOCK_SIZE,
-            x if x < REASONABLE_BLOCK_SIZE * BLOB_MAX_BLOCKS => REASONABLE_BLOCK_SIZE,
-            x => (x / BLOB_MAX_BLOCKS)
-                .checked_add(1)
-                .ok_or(Error::TooLarge)?,
-        },
-        Some(x) if x <= BLOB_MIN_BLOCK_SIZE => BLOB_MIN_BLOCK_SIZE,
-        Some(x) => x,
+    let memory_limited_concurrency = match NonZeroUsize::new(
+        MEMORY_THRESHOLD
+            .get()
+            .checked_div(block_size.get())
+            .unwrap_or(0),
+    ) {
+        Some(concurrency) => concurrency,
+        None => NonZeroUsize::MIN,
     };
-
-    let block_size = usize::min(block_size, BLOB_MAX_BLOCK_SIZE);
-
-    let upload_concurrency = match upload_concurrency {
-        0 | 1 => 1,
-        _ => match MEMORY_THRESHOLD.checked_div(block_size) {
-            None | Some(0) => 1,
-            Some(x) => cmp::min(MAX_CONCURRENCY, x),
-        },
-    };
+    let upload_concurrency = cmp::min(
+        cmp::min(
+            upload_concurrency.unwrap_or(DEFAULT_CONCURRENCY),
+            memory_limited_concurrency,
+        ),
+        MAX_CONCURRENCY,
+    );
 
     Ok((block_size, upload_concurrency))
+}
+
+fn upload_parameters(
+    file_size: NonZeroUsize,
+    block_size: Option<NonZeroUsize>,
+    upload_concurrency: Option<NonZeroUsize>,
+) -> Result<(NonZeroUsize, NonZeroUsize)> {
+    let block_size = block_size.map(|x| x.saturating_mul(ONE_MB_NZ));
+    calc_concurrency(file_size, block_size, upload_concurrency)
 }
 
 /// A seekable file-backed stream used for blob uploads.
@@ -245,15 +280,15 @@ impl futures::io::AsyncRead for FileStream {
 /// ```rust,no_run
 /// use avml::BlobUploader;
 /// # use avml::Result;
-/// # use std::path::Path;
+/// # use std::{num::NonZeroUsize, path::Path};
 /// # use url::Url;
 /// # async fn upload() -> Result<()> {
 /// let sas_url = Url::parse("https://contoso.com/container_name/blob_name?sas_token_here=1")
 ///     .expect("url parsing failed");
 /// let path = Path::new("/tmp/image.lime");
 /// let uploader = BlobUploader::new(&sas_url)?
-///     .block_size(Some(100))
-///     .concurrency(5);
+///     .block_size(NonZeroUsize::new(100))
+///     .concurrency(NonZeroUsize::new(5));
 /// uploader.upload_file(&path).await?;
 /// # Ok(())
 /// # }
@@ -261,8 +296,8 @@ impl futures::io::AsyncRead for FileStream {
 #[derive(Clone)]
 pub struct BlobUploader {
     client: Arc<BlobClient>,
-    block_size: Option<usize>,
-    concurrency: usize,
+    block_size: Option<NonZeroUsize>,
+    concurrency: Option<NonZeroUsize>,
 }
 
 impl BlobUploader {
@@ -284,18 +319,19 @@ impl BlobUploader {
         Self {
             client: Arc::new(client),
             block_size: None,
-            concurrency: DEFAULT_CONCURRENCY,
+            concurrency: None,
         }
     }
 
-    /// Specify the block size in multiples of 1MB
+    /// Specify a positive block size in multiples of 1MB.
     #[must_use]
-    pub fn block_size(self, block_size: Option<usize>) -> Self {
+    pub fn block_size(self, block_size: Option<NonZeroUsize>) -> Self {
         Self { block_size, ..self }
     }
 
+    /// Specify a positive upload concurrency.
     #[must_use]
-    pub fn concurrency(self, concurrency: usize) -> Self {
+    pub fn concurrency(self, concurrency: Option<NonZeroUsize>) -> Self {
         Self {
             concurrency,
             ..self
@@ -313,18 +349,19 @@ impl BlobUploader {
     pub async fn upload_file(self, filename: &Path) -> Result<()> {
         let file = File::open(filename).await?;
         let file_size = file.metadata().await?.len().try_into()?;
-
-        let block_size = self.block_size.map(|x| x.saturating_mul(ONE_MB));
+        let Some(file_size) = NonZeroUsize::new(file_size) else {
+            return Ok(());
+        };
         let (block_size, uploaders_count) =
-            calc_concurrency(file_size, block_size, self.concurrency)?;
+            upload_parameters(file_size, self.block_size, self.concurrency)?;
 
         let stream = FileStream::new(file, DEFAULT_BUFFER_SIZE).await?;
         let stream: Box<dyn SeekableStream> = Box::new(stream);
         let content: RequestContent<Bytes, NoFormat> = Body::from(stream).into();
 
         let options = BlobClientUploadOptions {
-            parallel: NonZeroUsize::new(uploaders_count),
-            partition_size: NonZeroUsize::new(block_size),
+            parallel: Some(uploaders_count),
+            partition_size: Some(block_size),
             ..Default::default()
         };
 
@@ -340,74 +377,91 @@ mod tests {
     use futures::AsyncReadExt as _;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    const ONE_GB: usize = ONE_MB.saturating_mul(1024);
-    const ONE_TB: usize = ONE_GB.saturating_mul(1024);
+    fn non_zero(value: usize) -> Result<NonZeroUsize> {
+        NonZeroUsize::new(value).ok_or(Error::TooLarge)
+    }
+
+    fn bytes_from_mib(mebibytes: usize) -> Result<NonZeroUsize> {
+        non_zero(mebibytes.checked_mul(ONE_MB).ok_or(Error::TooLarge)?)
+    }
+
+    fn bytes_from_gib(gibibytes: usize) -> Result<NonZeroUsize> {
+        bytes_from_mib(gibibytes.checked_mul(1024).ok_or(Error::TooLarge)?)
+    }
 
     #[test]
-    fn test_calc_concurrency() -> Result<()> {
-        assert_eq!(
-            (BLOB_MIN_BLOCK_SIZE, 10),
-            calc_concurrency(ONE_MB * 300, Some(1), DEFAULT_CONCURRENCY)?,
-            "specified blocksize would overflow block count, so we use the minimum block size"
-        );
+    fn small_files_use_minimum_block_size_and_default_concurrency() -> Result<()> {
+        let (block_size, concurrency) = upload_parameters(bytes_from_mib(400)?, None, None)?;
 
-        assert_eq!(
-            (BLOB_MIN_BLOCK_SIZE, 10),
-            calc_concurrency(ONE_GB * 30, Some(ONE_MB), DEFAULT_CONCURRENCY)?,
-            "30GB file, 1MB blocks"
-        );
+        assert_eq!(block_size, bytes_from_mib(5)?);
+        assert_eq!(concurrency, DEFAULT_CONCURRENCY);
+        Ok(())
+    }
 
-        assert_eq!(
-            (ONE_MB * 100, 5),
-            calc_concurrency(ONE_GB * 30, Some(ONE_MB * 100), DEFAULT_CONCURRENCY)?,
-            "30GB file, 100MB block size"
-        );
+    #[test]
+    fn user_block_size_is_clamped_to_minimum() -> Result<()> {
+        let (block_size, concurrency) =
+            upload_parameters(bytes_from_mib(300)?, Some(NonZeroUsize::MIN), None)?;
 
-        assert_eq!(
-            (5 * ONE_MB, 10),
-            calc_concurrency(ONE_MB * 400, None, DEFAULT_CONCURRENCY)?,
-            "400MB file, no block size"
-        );
+        assert_eq!(block_size, bytes_from_mib(5)?);
+        assert_eq!(concurrency, DEFAULT_CONCURRENCY);
+        Ok(())
+    }
 
-        assert_eq!(
-            (5 * ONE_MB, 10),
-            calc_concurrency(ONE_GB * 16, None, DEFAULT_CONCURRENCY)?,
-            "16GB file, no block size"
-        );
+    #[test]
+    fn requested_concurrency_caps_memory_limited_uploaders() -> Result<()> {
+        let (block_size, concurrency) = upload_parameters(
+            bytes_from_gib(30)?,
+            Some(non_zero(100)?),
+            Some(non_zero(3)?),
+        )?;
 
-        assert_eq!(
-            (5 * ONE_MB, 10),
-            calc_concurrency(ONE_GB * 32, None, DEFAULT_CONCURRENCY)?,
-            "32GB file, no block size",
-        );
+        assert_eq!(block_size, bytes_from_mib(100)?);
+        assert_eq!(concurrency, non_zero(3)?);
+        Ok(())
+    }
 
-        assert_eq!(
-            (ONE_MB * 100, 5),
-            calc_concurrency(ONE_TB, None, DEFAULT_CONCURRENCY)?,
-            "1TB file, no block size"
-        );
+    #[test]
+    fn auto_block_size_grows_when_minimum_would_exceed_max_blocks() -> Result<()> {
+        let file_size = non_zero(
+            bytes_from_mib(5)?
+                .get()
+                .checked_mul(50_000)
+                .ok_or(Error::TooLarge)?
+                .checked_add(1)
+                .ok_or(Error::TooLarge)?,
+        )?;
+        let expected_block_size = non_zero(file_size.get().div_ceil(50_000))?;
+        let (block_size, concurrency) = upload_parameters(file_size, None, None)?;
 
-        assert_eq!(
-            (100 * ONE_MB, 5),
-            calc_concurrency(ONE_TB * 4, None, DEFAULT_CONCURRENCY)?,
-            "4TB file, no block size"
-        );
+        assert_eq!(block_size, expected_block_size);
+        assert_eq!(concurrency, DEFAULT_CONCURRENCY);
+        Ok(())
+    }
 
-        assert_eq!(
-            (100 * ONE_MB, 5),
-            calc_concurrency(ONE_TB * 4, Some(0), DEFAULT_CONCURRENCY)?,
-            "4TB file, zero block size"
-        );
+    #[test]
+    fn huge_blocks_still_use_at_least_one_uploader() -> Result<()> {
+        let (block_size, concurrency) =
+            upload_parameters(bytes_from_gib(30)?, Some(non_zero(600)?), None)?;
 
-        let (block_size, uploaders_count) =
-            calc_concurrency(ONE_TB.saturating_mul(32), None, DEFAULT_CONCURRENCY)?;
-        assert!(block_size > REASONABLE_BLOCK_SIZE && block_size < BLOB_MAX_BLOCK_SIZE);
-        assert_eq!(uploaders_count, 1);
+        assert_eq!(block_size, bytes_from_mib(600)?);
+        assert_eq!(concurrency, NonZeroUsize::MIN);
+        Ok(())
+    }
 
-        assert!(
-            calc_concurrency((BLOB_MAX_BLOCKS * BLOB_MAX_BLOCK_SIZE) + 1, None, 10).is_err(),
-            "files beyond max size should fail"
-        );
+    #[test]
+    fn files_larger_than_azure_limit_are_rejected() -> Result<()> {
+        let oversized_file = non_zero(
+            bytes_from_mib(50_000usize.checked_mul(4000).ok_or(Error::TooLarge)?)?
+                .get()
+                .checked_add(1)
+                .ok_or(Error::TooLarge)?,
+        )?;
+
+        assert!(matches!(
+            upload_parameters(oversized_file, None, None),
+            Err(Error::TooLarge)
+        ));
         Ok(())
     }
 
@@ -446,5 +500,23 @@ mod tests {
 
         let _ = tokio::fs::remove_file(&path).await;
         result
+    }
+
+    #[tokio::test]
+    async fn test_upload_file_empty_is_noop() -> Result<()> {
+        let path = std::env::temp_dir().join(format!(
+            "avml-empty-blob-upload-{}-{}.bin",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        tokio::fs::write(&path, []).await?;
+
+        let url = Url::parse("https://127.0.0.1:9/container/blob?sig=test")?;
+        BlobUploader::new(&url)?.upload_file(&path).await?;
+        let _ = tokio::fs::remove_file(&path).await;
+        Ok(())
     }
 }

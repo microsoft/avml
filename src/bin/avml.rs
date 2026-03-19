@@ -11,6 +11,8 @@
 use avml::Error;
 use avml::{Result, Snapshot, Source, iomem};
 use clap::Parser;
+#[cfg(feature = "blobstore")]
+use std::num::NonZeroUsize;
 use std::{num::NonZeroU64, ops::Range, path::PathBuf};
 #[cfg(any(feature = "blobstore", feature = "put"))]
 use tokio::{fs::remove_file, runtime::Runtime};
@@ -52,15 +54,15 @@ struct Config {
     #[arg(long)]
     sas_url: Option<Url>,
 
-    /// specify maximum block size in MiB
+    /// specify maximum block size in MiB; must be greater than 0
     #[cfg(feature = "blobstore")]
     #[arg(long)]
-    sas_block_size: Option<usize>,
+    sas_block_size: Option<NonZeroUsize>,
 
-    /// specify blob upload concurrency
+    /// specify blob upload concurrency; must be greater than 0
     #[cfg(feature = "blobstore")]
-    #[arg(long, default_value_t=avml::DEFAULT_CONCURRENCY)]
-    sas_block_concurrency: usize,
+    #[arg(long)]
+    sas_block_concurrency: Option<NonZeroUsize>,
 
     /// name of the file to write to on local system
     filename: PathBuf,
