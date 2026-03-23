@@ -5,7 +5,6 @@ use crate::io::snappy::SnapCountWriter;
 use byteorder::{ByteOrder as _, LittleEndian, ReadBytesExt as _};
 use core::ops::Range;
 #[cfg(target_family = "unix")]
-use libc::O_NOFOLLOW;
 use snap::read::FrameDecoder;
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::OpenOptionsExt as _;
@@ -192,12 +191,26 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
 
     #[cfg(target_family = "unix")]
     fn open_dst(path: &Path) -> Result<File> {
+        // Special-case stdout: commonly a symlink on Linux and should remain supported.
+        // Also do not use O_CREAT/O_TRUNC for stdout.
+        if path == Path::new("/dev/stdout")
+            || path == Path::new("/proc/self/fd/1")
+            || path == Path::new("/dev/fd/1")
+        {
+            return OpenOptions::new()
+                .write(true)
+                .open(path)
+                .map_err(|e| Error::Io(e, "unable to open output destination"));
+        }
+
+        // Harden destination creation against symlink clobbering (CWE-59).
+        // Enforce at open-time to avoid TOCTOU races.
         OpenOptions::new()
             .mode(0o600)
-            .custom_flags(O_NOFOLLOW)
             .write(true)
             .create(true)
             .truncate(true)
+            .custom_flags(libc::O_NOFOLLOW)
             .open(path)
             .map_err(|e| Error::Io(e, "unable to create snapshot file"))
     }
