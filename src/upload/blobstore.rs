@@ -32,9 +32,6 @@ pub enum Error {
 
     #[error(transparent)]
     IntConversion(#[from] core::num::TryFromIntError),
-
-    #[error(transparent)]
-    InvalidUrl(#[from] url::ParseError),
 }
 
 type Result<T> = core::result::Result<T, Error>;
