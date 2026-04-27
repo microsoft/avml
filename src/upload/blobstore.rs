@@ -159,8 +159,7 @@ struct ProgressStream {
 }
 
 impl ProgressStream {
-    async fn new(file: File) -> Result<Self> {
-        let file_size = file.metadata().await?.len();
+    async fn new(file: File, file_size: u64) -> Result<Self> {
         let inner = FileStream::builder(file).build().await?;
         Ok(Self {
             inner,
@@ -231,9 +230,14 @@ pub struct BlobUploader {
 impl BlobUploader {
     /// Create a new ``BlobUploader`` from a SAS URL.
     ///
+    /// The URL must point at a specific blob (e.g. `https://<account>.blob.core.windows.net/<container>/<blob>?<sas-token>`).
+    /// SAS authentication is carried inline in the URL's query string; this
+    /// constructor does not attach a separate credential.
+    ///
     /// # Errors
-    /// Returns an error if:
-    /// - The URL cannot be parsed as a valid Azure SAS URL
+    /// Propagates any error returned by
+    /// [`BlobClient::from_url`](azure_storage_blob::BlobClient::from_url),
+    /// for example if the URL shape is not supported by the Azure SDK.
     pub fn new(sas: &Url) -> Result<Self> {
         let blob_client = BlobClient::from_url(sas.clone(), None, None)?;
         Ok(Self::with_blob_client(blob_client))
@@ -268,6 +272,8 @@ impl BlobUploader {
 
     /// Upload a file to Azure Blob Store using a fully qualified SAS token.
     ///
+    /// Empty files are uploaded as zero-length blobs.
+    ///
     /// # Errors
     /// Returns an error if:
     /// - The file cannot be opened or read
@@ -275,20 +281,24 @@ impl BlobUploader {
     /// - There is a failure during the upload process
     pub async fn upload_file(self, filename: &Path) -> Result<()> {
         let file = File::open(filename).await?;
-        let Some(file_size) = NonZeroU64::new(file.metadata().await?.len()) else {
-            return Ok(());
-        };
-        let (block_size, uploaders_count) =
-            upload_parameters(file_size, self.block_size, self.concurrency)?;
+        let file_size = file.metadata().await?.len();
 
-        let stream = ProgressStream::new(file).await?;
+        let stream = ProgressStream::new(file, file_size).await?;
         let stream: Box<dyn SeekableStream> = Box::new(stream);
         let content: RequestContent<Bytes, NoFormat> = Body::from(stream).into();
 
-        let options = BlobClientUploadOptions {
-            parallel: Some(uploaders_count),
-            partition_size: Some(block_size),
-            ..Default::default()
+        let options = if let Some(file_size) = NonZeroU64::new(file_size) {
+            let (block_size, uploaders_count) =
+                upload_parameters(file_size, self.block_size, self.concurrency)?;
+            BlobClientUploadOptions {
+                parallel: Some(uploaders_count),
+                partition_size: Some(block_size),
+                ..Default::default()
+            }
+        } else {
+            // Empty files: let the SDK upload a zero-length blob without
+            // needing partition/parallelism parameters.
+            BlobClientUploadOptions::default()
         };
 
         self.client.upload(content, Some(options)).await?;
@@ -328,7 +338,7 @@ mod tests {
     fn small_files_use_minimum_block_size_and_default_concurrency() -> Result<()> {
         let (block_size, concurrency) = upload_parameters(bytes_from_mib(400)?, None, None)?;
 
-        assert_eq!(block_size, bytes_from_mib(5)?);
+        assert_eq!(block_size, BLOB_MIN_BLOCK_SIZE);
         assert_eq!(concurrency, DEFAULT_CONCURRENCY);
         Ok(())
     }
@@ -338,7 +348,7 @@ mod tests {
         let (block_size, concurrency) =
             upload_parameters(bytes_from_mib(300)?, Some(NonZeroU64::MIN), None)?;
 
-        assert_eq!(block_size, bytes_from_mib(5)?);
+        assert_eq!(block_size, BLOB_MIN_BLOCK_SIZE);
         assert_eq!(concurrency, DEFAULT_CONCURRENCY);
         Ok(())
     }
@@ -358,15 +368,16 @@ mod tests {
 
     #[test]
     fn auto_block_size_grows_when_minimum_would_exceed_max_blocks() -> Result<()> {
+        let max_blocks = BLOB_MAX_BLOCKS.get();
         let file_size = non_zero(
-            bytes_from_mib(5)?
+            BLOB_MIN_BLOCK_SIZE
                 .get()
-                .checked_mul(50_000)
+                .checked_mul(max_blocks)
                 .ok_or(Error::TooLarge)?
                 .checked_add(1)
                 .ok_or(Error::TooLarge)?,
         )?;
-        let expected_block_size = non_zero(file_size.get().div_ceil(50_000))?;
+        let expected_block_size = non_zero(file_size.get().div_ceil(max_blocks))?;
         let (block_size, concurrency) = upload_parameters(file_size, None, None)?;
 
         assert_eq!(block_size, expected_block_size);
@@ -387,7 +398,7 @@ mod tests {
     #[test]
     fn files_larger_than_azure_limit_are_rejected() -> Result<()> {
         let oversized_file = non_zero(
-            bytes_from_mib(50_000u64.checked_mul(4000).ok_or(Error::TooLarge)?)?
+            BLOB_MAX_FILE_SIZE
                 .get()
                 .checked_add(1)
                 .ok_or(Error::TooLarge)?,
@@ -415,7 +426,8 @@ mod tests {
 
         let result = async {
             let file = File::open(&path).await?;
-            let mut stream = ProgressStream::new(file).await?;
+            let file_size = file.metadata().await?.len();
+            let mut stream = ProgressStream::new(file, file_size).await?;
 
             assert_eq!(stream.len(), Some(u64::try_from(expected.len())?));
 
@@ -435,23 +447,5 @@ mod tests {
 
         let _ = tokio::fs::remove_file(&path).await;
         result
-    }
-
-    #[tokio::test]
-    async fn test_upload_file_empty_is_noop() -> Result<()> {
-        let path = std::env::temp_dir().join(format!(
-            "avml-empty-blob-upload-{}-{}.bin",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos()
-        ));
-        tokio::fs::write(&path, []).await?;
-
-        let url = Url::parse("https://127.0.0.1:9/container/blob?sig=test")?;
-        BlobUploader::new(&url)?.upload_file(&path).await?;
-        let _ = tokio::fs::remove_file(&path).await;
-        Ok(())
     }
 }
