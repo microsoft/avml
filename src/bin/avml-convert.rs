@@ -195,7 +195,7 @@ fn main() -> Result<()> {
 mod tests {
     use crate::{convert_image, convert_to_raw_image, encode_raw_image};
     use avml::{Result, image};
-    use rand::{RngCore, SeedableRng, rngs::SmallRng};
+    use rand::{Rng, SeedableRng, rngs::SmallRng};
     use std::io::Cursor;
 
     fn memory_image(src: &[u8]) -> image::Image<Cursor<&[u8]>, Cursor<Vec<u8>>> {
