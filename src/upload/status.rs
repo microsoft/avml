@@ -7,7 +7,7 @@ use indicatif::{ProgressBar, ProgressFinish, ProgressStyle};
 use std::io::{IsTerminal as _, stdin};
 
 #[cfg(all(feature = "status", any(feature = "blobstore", feature = "put")))]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Status {
     bar: Option<ProgressBar>,
     total: Option<u64>,
@@ -48,7 +48,7 @@ impl Status {
 }
 
 #[cfg(all(not(feature = "status"), any(feature = "blobstore", feature = "put")))]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Status {}
 
 #[cfg(all(not(feature = "status"), any(feature = "blobstore", feature = "put")))]

@@ -57,7 +57,7 @@ struct Config {
     /// specify maximum block size in MiB; must be greater than 0
     #[cfg(feature = "blobstore")]
     #[arg(long)]
-    sas_block_size: Option<NonZeroUsize>,
+    sas_block_size: Option<NonZeroU64>,
 
     /// specify blob upload concurrency; must be greater than 0
     #[cfg(feature = "blobstore")]

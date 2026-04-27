@@ -9,7 +9,10 @@
 
 use avml::{BlobUploader, Error, Result, put};
 use clap::{Parser, Subcommand};
-use std::{num::NonZeroUsize, path::PathBuf};
+use std::{
+    num::{NonZeroU64, NonZeroUsize},
+    path::PathBuf,
+};
 use tokio::runtime::Runtime;
 use url::Url;
 
@@ -43,7 +46,7 @@ enum Commands {
 
         /// specify maximum block size in MiB; must be greater than 0
         #[arg(long)]
-        sas_block_size: Option<NonZeroUsize>,
+        sas_block_size: Option<NonZeroU64>,
     },
 }
 
