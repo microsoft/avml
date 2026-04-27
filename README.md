@@ -145,8 +145,6 @@ Options:
       --sas-block-concurrency <SAS_BLOCK_CONCURRENCY>
           specify blob upload concurrency; must be greater than 0
 
-          [default: 10]
-
   -h, --help
           Print help (see a summary with '-h')
 
