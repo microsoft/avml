@@ -121,9 +121,7 @@ fn can_open(src: &Path) -> bool {
 // files.  As such, we don't check those for size.
 #[must_use]
 fn is_kcore_ok() -> bool {
-    metadata(Path::new("/proc/kcore"))
-        .map(|x| x.len() > 0x2000)
-        .unwrap_or(false)
+    metadata(Path::new("/proc/kcore")).is_ok_and(|x| x.len() > 0x2000)
         && can_open(Path::new("/proc/kcore"))
 }
 
@@ -348,7 +346,7 @@ impl<'a, 'b> Snapshot<'a, 'b> {
             .iter()
             .filter(|x| x.p_type == PT_LOAD)
             .collect();
-        segments.sort_by(|a, b| a.p_vaddr.cmp(&b.p_vaddr));
+        segments.sort_by_key(|a| a.p_vaddr);
 
         let first_vaddr = segments
             .first()
