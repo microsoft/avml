@@ -7,9 +7,12 @@
 #![deny(clippy::manual_assert)]
 #![deny(clippy::indexing_slicing)]
 
-use avml::{BlobUploader, DEFAULT_CONCURRENCY, Error, Result, put};
+use avml::{BlobUploader, Error, Result, put};
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
+use std::{
+    num::{NonZeroU64, NonZeroUsize},
+    path::PathBuf,
+};
 use tokio::runtime::Runtime;
 use url::Url;
 
@@ -37,13 +40,13 @@ enum Commands {
         /// url to upload via Azure Blob Storage
         url: Url,
 
-        /// specify blob upload concurrency
-        #[arg(long, default_value_t=DEFAULT_CONCURRENCY)]
-        sas_block_concurrency: usize,
-
-        /// specify maximum block size in MiB
+        /// specify blob upload concurrency; must be greater than 0
         #[arg(long)]
-        sas_block_size: Option<usize>,
+        sas_block_concurrency: Option<NonZeroUsize>,
+
+        /// specify maximum block size in MiB; must be greater than 0
+        #[arg(long)]
+        sas_block_size: Option<NonZeroU64>,
     },
 }
 

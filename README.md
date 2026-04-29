@@ -140,12 +140,10 @@ Options:
           upload via Azure Blob Store upon acquisition
 
       --sas-block-size <SAS_BLOCK_SIZE>
-          specify maximum block size in MiB
+          specify maximum block size in MiB; must be greater than 0
 
       --sas-block-concurrency <SAS_BLOCK_CONCURRENCY>
-          specify blob upload concurrency
-
-          [default: 10]
+          specify blob upload concurrency; must be greater than 0
 
   -h, --help
           Print help (see a summary with '-h')

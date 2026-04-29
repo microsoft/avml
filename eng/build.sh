@@ -11,6 +11,7 @@ cd $(dirname ${BASH_SOURCE[0]})/../
 ARCH=$(uname -m)
 
 cargo +stable test --release --target ${ARCH}-unknown-linux-musl --locked --all-targets --all-features
+cargo +stable test --release --target ${ARCH}-unknown-linux-musl --locked --doc --all-features
 for FEATURE in $(cargo metadata --locked --format-version 1 | jq '.packages | [.[] | select(.name=="avml")][0].features | keys | @tsv' -r); do
     cargo +stable check --release --target ${ARCH}-unknown-linux-musl --locked --no-default-features --features ${FEATURE} --features native-tls
 done
