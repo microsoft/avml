@@ -31,7 +31,7 @@ snap = "1.1"
 thiserror = "2.0"
 libc = "0.2"
 
-azure_core = {version="0.35", optional=true, default-features=false, features=["reqwest", "tokio"]}
+azure_core = {version="1.0", optional=true, default-features=false, features=["reqwest", "tokio"]}
 azure_storage_blob = {version="0.12", optional=true, default-features=false, features=["tokio"]}
 indicatif = {version="0.18", optional=true, default-features=false}
 native-tls = {version="0.2", features=["vendored"], optional=true, default-features=false}
