@@ -20,7 +20,10 @@ impl Status {
         let bar = stdin().is_terminal().then(|| {
             ProgressBar::new(size)
                 .with_style(
-                    #[allow(clippy::expect_used)]
+                    #[expect(
+                        clippy::expect_used,
+                        reason = "template string is a compile-time literal known to be valid"
+                    )]
                     ProgressStyle::default_bar()
                         .template("{bytes} ({bytes_per_sec})")
                         .expect("progress bar build failed"),
@@ -56,10 +59,16 @@ impl Status {
     pub fn new(_total: Option<u64>) -> Self {
         Self {}
     }
-    #[allow(clippy::unused_self)]
+    #[expect(
+        clippy::unused_self,
+        reason = "API parity with the status-enabled variant"
+    )]
     pub fn inc(&self, _n: usize) {}
 
     #[cfg(feature = "blobstore")]
-    #[allow(clippy::unused_self)]
+    #[expect(
+        clippy::unused_self,
+        reason = "API parity with the status-enabled variant"
+    )]
     pub fn reset(&self) {}
 }
