@@ -36,20 +36,17 @@ pub enum Error {
 
 type Result<T> = core::result::Result<T, Error>;
 
-#[allow(clippy::expect_used)]
 const ONE_MB_NZ: NonZeroU64 = NonZeroU64::new(1024 * 1024).expect("ONE_MB must be non-zero");
 
 /// Maximum number of blocks
 ///
 /// <https://docs.microsoft.com/en-us/azure/storage/blobs/scalability-targets#scale-targets-for-blob-storage>
-#[allow(clippy::expect_used)]
 const BLOB_MAX_BLOCKS: NonZeroU64 =
     NonZeroU64::new(50_000).expect("blob max blocks must be non-zero");
 
 /// Maximum size of any single block
 ///
 /// <https://docs.microsoft.com/en-us/azure/storage/blobs/scalability-targets#scale-targets-for-blob-storage>
-#[allow(clippy::expect_used)]
 const BLOB_MAX_BLOCK_SIZE: NonZeroU64 = ONE_MB_NZ.saturating_mul(
     NonZeroU64::new(4000).expect("blob max block size multiplier must be non-zero"),
 );
@@ -57,14 +54,12 @@ const BLOB_MAX_BLOCK_SIZE: NonZeroU64 = ONE_MB_NZ.saturating_mul(
 /// Maximum total size of a file
 ///
 /// <https://docs.microsoft.com/en-us/azure/storage/blobs/scalability-targets#scale-targets-for-blob-storage>
-#[allow(clippy::expect_used)]
 const BLOB_MAX_FILE_SIZE: NonZeroU64 = BLOB_MAX_BLOCKS.saturating_mul(BLOB_MAX_BLOCK_SIZE);
 
 /// Minimum block size, which is required to trigger the "high-throughput block
 /// blobs" feature on all storage accounts
 ///
 /// <https://azure.microsoft.com/en-us/blog/high-throughput-with-azure-blob-storage/>
-#[allow(clippy::expect_used)]
 const BLOB_MIN_BLOCK_SIZE: NonZeroU64 = ONE_MB_NZ
     .saturating_mul(NonZeroU64::new(5).expect("blob min block size multiplier must be non-zero"));
 
@@ -74,7 +69,6 @@ const BLOB_MIN_BLOCK_SIZE: NonZeroU64 = ONE_MB_NZ
 /// VM scaleset) to a single default storage account.
 ///
 /// <https://docs.microsoft.com/en-us/azure/storage/common/scalability-targets-standard-account#scale-targets-for-standard-storage-accounts>
-#[allow(clippy::expect_used)]
 const MAX_CONCURRENCY: NonZeroUsize =
     NonZeroUsize::new(10).expect("max concurrency must be non-zero");
 
@@ -84,12 +78,10 @@ const MAX_CONCURRENCY: NonZeroUsize =
 /// VM scaleset) to a single default storage account.
 ///
 /// <https://docs.microsoft.com/en-us/azure/storage/common/scalability-targets-standard-account#scale-targets-for-standard-storage-accounts>
-#[allow(clippy::expect_used)]
 pub const DEFAULT_CONCURRENCY: NonZeroUsize =
     NonZeroUsize::new(10).expect("default concurrency must be non-zero");
 
 /// Keep at most 500MB of block data in flight across all uploaders.
-#[allow(clippy::expect_used)]
 const MEMORY_THRESHOLD: NonZeroU64 = ONE_MB_NZ
     .saturating_mul(NonZeroU64::new(500).expect("memory threshold multiplier must be non-zero"));
 
