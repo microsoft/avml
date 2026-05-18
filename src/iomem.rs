@@ -72,7 +72,10 @@ pub fn merge_ranges(mut ranges: Vec<Range<u64>>) -> Vec<Range<u64>> {
     while !ranges.is_empty() {
         let mut range = ranges.remove(0);
 
-        #[allow(clippy::indexing_slicing)]
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "ranges[0] guarded by the !ranges.is_empty() check above"
+        )]
         while !ranges.is_empty() && range.end >= ranges[0].start {
             let next = ranges.remove(0);
             range = range.start..next.end;
