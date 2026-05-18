@@ -7,17 +7,13 @@
 #![deny(clippy::manual_assert)]
 #![deny(clippy::indexing_slicing)]
 
-#[cfg(any(feature = "blobstore", feature = "put"))]
-use avml::Error;
 use avml::{Result, Snapshot, Source, iomem};
 use clap::Parser;
 #[cfg(feature = "blobstore")]
 use std::num::NonZeroUsize;
 use std::{num::NonZeroU64, ops::Range, path::PathBuf};
 #[cfg(any(feature = "blobstore", feature = "put"))]
-use tokio::{fs::remove_file, runtime::Runtime};
-#[cfg(any(feature = "blobstore", feature = "put"))]
-use url::Url;
+use {avml::Error, tokio::fs::remove_file, url::Url};
 
 #[derive(Parser)]
 /// A portable volatile memory acquisition tool for Linux
@@ -116,9 +112,7 @@ async fn upload(config: &Config) -> Result<()> {
     Ok(())
 }
 
-fn main() -> Result<()> {
-    let config = Config::parse();
-
+fn acquire(config: &Config) -> Result<()> {
     let version = if config.compress { 2 } else { 1 };
 
     let ranges = iomem::parse()?;
@@ -128,13 +122,19 @@ fn main() -> Result<()> {
         .max_disk_usage(config.max_disk_usage)
         .version(version);
     snapshot.create()?;
-
-    #[cfg(any(feature = "blobstore", feature = "put"))]
-    {
-        Runtime::new()
-            .map_err(|e| Error::Io(e, "tokio runtime error"))?
-            .block_on(upload(&config))?;
-    }
-
     Ok(())
+}
+
+#[cfg(not(any(feature = "blobstore", feature = "put")))]
+fn main() -> Result<()> {
+    let config = Config::parse();
+    acquire(&config)
+}
+
+#[cfg(any(feature = "blobstore", feature = "put"))]
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<()> {
+    let config = Config::parse();
+    acquire(&config)?;
+    upload(&config).await
 }
