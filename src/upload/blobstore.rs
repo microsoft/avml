@@ -236,7 +236,7 @@ impl BlobUploader {
     /// [`BlobClient::from_url`](azure_storage_blob::BlobClient::from_url),
     /// for example if the URL shape is not supported by the Azure SDK.
     pub fn new(sas: &Url) -> Result<Self> {
-        let blob_client = BlobClient::from_url(sas.clone(), None, None)?;
+        let blob_client = BlobClient::new(sas.clone(), None, None)?;
         Ok(Self::with_blob_client(blob_client))
     }
 
