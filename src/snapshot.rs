@@ -341,43 +341,63 @@ impl<'a, 'b> Snapshot<'a, 'b> {
 
         let file =
             elf::ElfStream::<NativeEndian, _>::open_stream(&mut image.src).map_err(Error::Elf)?;
-        let mut segments: Vec<&ProgramHeader> = file
-            .segments()
-            .iter()
-            .filter(|x| x.p_type == PT_LOAD)
-            .collect();
-        segments.sort_by_key(|a| a.p_vaddr);
+        let physical_ranges = Self::physical_ranges_from_segments(file.segments());
 
-        let first_vaddr = segments
-            .first()
-            .ok_or_else(|| Error::UnableToCreateSnapshot("no initial addresses".to_string()))?
-            .p_vaddr;
-        let first_start = self
-            .memory_ranges
-            .first()
-            .ok_or_else(|| Error::UnableToCreateSnapshot("no initial memory range".to_string()))?
-            .start;
-        let start = first_vaddr.saturating_sub(first_start);
-
-        let mut physical_ranges = vec![];
-
-        for phdr in segments {
-            let entry_start = phdr.p_vaddr.checked_sub(start).ok_or_else(|| {
-                Error::UnableToCreateSnapshot("unable to calculate start address".to_string())
-            })?;
-            let entry_end = entry_start.checked_add(phdr.p_memsz).ok_or_else(|| {
-                Error::UnableToCreateSnapshot("unable to calculate end address".to_string())
-            })?;
-
-            physical_ranges.push(Block {
-                range: entry_start..entry_end,
-                offset: phdr.p_offset,
-            });
+        if physical_ranges.is_empty() {
+            return Err(Error::UnableToCreateSnapshot(
+                "no usable PT_LOAD segments in /proc/kcore".to_string(),
+            ));
+        }
+        if self.memory_ranges.is_empty() {
+            return Err(Error::UnableToCreateSnapshot(
+                "no initial memory range".to_string(),
+            ));
         }
 
         let blocks = Self::find_kcore_blocks(&self.memory_ranges, &physical_ranges);
         image.write_blocks(&blocks)?;
         Ok(())
+    }
+
+    // Translate /proc/kcore PT_LOAD segments into physical-address Blocks,
+    // sorted ascending by p_paddr.
+    //
+    // Segments with `p_paddr` set to the all-ones sentinel (u64::MAX on
+    // ELFCLASS64, u32::MAX widened on ELFCLASS32) are kernel virtual-only
+    // mappings (vmalloc, modules) with no physical backing; skip them.
+    // Zero-length segments are also skipped.
+    fn physical_ranges_from_segments<I>(segments: I) -> Vec<Block>
+    where
+        I: IntoIterator,
+        I::Item: core::borrow::Borrow<ProgramHeader>,
+    {
+        use core::borrow::Borrow as _;
+
+        const PADDR_SENTINEL_64: u64 = u64::MAX;
+        const PADDR_SENTINEL_32: u64 = 0xffff_ffff;
+
+        let mut blocks: Vec<Block> = segments
+            .into_iter()
+            .filter_map(|phdr| {
+                let phdr = phdr.borrow();
+                if phdr.p_type != PT_LOAD {
+                    return None;
+                }
+                if phdr.p_memsz == 0 {
+                    return None;
+                }
+                if phdr.p_paddr == PADDR_SENTINEL_64 || phdr.p_paddr == PADDR_SENTINEL_32 {
+                    return None;
+                }
+                let end = phdr.p_paddr.checked_add(phdr.p_memsz)?;
+                Some(Block {
+                    range: phdr.p_paddr..end,
+                    offset: phdr.p_offset,
+                })
+            })
+            .collect();
+        blocks.sort_by_key(|b| b.range.start);
+        blocks
     }
 
     fn phys(&self, mem: &Path) -> Result<()> {
@@ -453,5 +473,111 @@ mod tests {
         let result = Snapshot::find_kcore_blocks(&ranges, &core_ranges);
 
         assert_eq!(result, expected);
+    }
+
+    fn fake_phdr(p_type: u32, p_paddr: u64, p_memsz: u64, p_offset: u64) -> ProgramHeader {
+        ProgramHeader {
+            p_type,
+            p_flags: 0,
+            p_offset,
+            p_vaddr: 0,
+            p_paddr,
+            p_filesz: p_memsz,
+            p_memsz,
+            p_align: 0x1000,
+        }
+    }
+
+    #[test]
+    fn physical_ranges_use_paddr_not_vaddr() {
+        // The whole point: a kernel that maps physical memory through two
+        // non-contiguous virtual slabs (PPC64-style) must still produce
+        // physical-address Blocks pointing at the right file offsets.
+        // p_vaddr is intentionally garbage relative to p_paddr.
+        let segments = [
+            fake_phdr(PT_LOAD, 0x1000, 0x1000, 0x4000),
+            fake_phdr(PT_LOAD, 0x10_0000, 0x2000, 0x5000),
+        ];
+        let result = Snapshot::physical_ranges_from_segments(segments);
+        assert_eq!(
+            result,
+            vec![
+                Block {
+                    range: 0x1000..0x2000,
+                    offset: 0x4000,
+                },
+                Block {
+                    range: 0x10_0000..0x10_2000,
+                    offset: 0x5000,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn physical_ranges_skip_non_pt_load_segments() {
+        // PT_NOTE, PT_DYNAMIC, etc. must not appear in the output.
+        const PT_NOTE: u32 = 4;
+        let segments = [
+            fake_phdr(PT_NOTE, 0x1000, 0x100, 0x4000),
+            fake_phdr(PT_LOAD, 0x2000, 0x100, 0x5000),
+        ];
+        let result = Snapshot::physical_ranges_from_segments(segments);
+        assert_eq!(
+            result,
+            vec![Block {
+                range: 0x2000..0x2100,
+                offset: 0x5000,
+            }]
+        );
+    }
+
+    #[test]
+    fn physical_ranges_skip_sentinel_paddrs() {
+        // Kernel virtual-only mappings (vmalloc, modules) advertise
+        // p_paddr == -1 to signal "no physical backing". Filter both
+        // the 64-bit and zero-extended 32-bit forms.
+        let segments = [
+            fake_phdr(PT_LOAD, u64::MAX, 0x1000, 0x4000),
+            fake_phdr(PT_LOAD, u64::from(u32::MAX), 0x1000, 0x5000),
+            fake_phdr(PT_LOAD, 0x1000, 0x1000, 0x6000),
+        ];
+        let result = Snapshot::physical_ranges_from_segments(segments);
+        assert_eq!(
+            result,
+            vec![Block {
+                range: 0x1000..0x2000,
+                offset: 0x6000,
+            }]
+        );
+    }
+
+    #[test]
+    fn physical_ranges_skip_zero_size_segments() {
+        let segments = [
+            fake_phdr(PT_LOAD, 0x1000, 0, 0x4000),
+            fake_phdr(PT_LOAD, 0x2000, 0x100, 0x5000),
+        ];
+        let result = Snapshot::physical_ranges_from_segments(segments);
+        assert_eq!(
+            result,
+            vec![Block {
+                range: 0x2000..0x2100,
+                offset: 0x5000,
+            }]
+        );
+    }
+
+    #[test]
+    fn physical_ranges_sorted_by_paddr() {
+        // Caller (`find_kcore_blocks`) requires ascending sort.
+        let segments = [
+            fake_phdr(PT_LOAD, 0x3000, 0x100, 0x6000),
+            fake_phdr(PT_LOAD, 0x1000, 0x100, 0x4000),
+            fake_phdr(PT_LOAD, 0x2000, 0x100, 0x5000),
+        ];
+        let result = Snapshot::physical_ranges_from_segments(segments);
+        let starts: Vec<u64> = result.iter().map(|b| b.range.start).collect();
+        assert_eq!(starts, vec![0x1000, 0x2000, 0x3000]);
     }
 }
