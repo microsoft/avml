@@ -19,13 +19,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v6.0.2
+    - uses: Swatinem/rust-cache@65012b490220f477f20ab979e35ae732e6de4e68 # v2
+    - uses: baptiste0928/cargo-install@f204293d9709061b7bc1756fec3ec4e2cd57dec0 # v3.4.0
+      with:
+        crate: typos-cli
+        locked: true
+    - uses: baptiste0928/cargo-install@f204293d9709061b7bc1756fec3ec4e2cd57dec0 # v3.4.0
+      with:
+        crate: cargo-semver-checks
+        locked: true
     - name: lint
       run: eng/lint.sh
   x64:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v6.0.2
-    - uses: Swatinem/rust-cache@v2
+    - uses: Swatinem/rust-cache@65012b490220f477f20ab979e35ae732e6de4e68 # v2
     - name: build
       run: eng/ci.sh
     - name: Run tests
@@ -45,7 +54,7 @@ jobs:
     runs-on: ubuntu-22.04-arm
     steps:
     - uses: actions/checkout@v6.0.2
-    - uses: Swatinem/rust-cache@v2
+    - uses: Swatinem/rust-cache@65012b490220f477f20ab979e35ae732e6de4e68 # v2
     - name: build
       run: eng/ci.sh
     - name: Run tests
@@ -69,7 +78,7 @@ jobs:
         git config --global core.autocrlf false
         git config --global core.eol lf
     - uses: actions/checkout@v6.0.2
-    - uses: Swatinem/rust-cache@v2
+    - uses: Swatinem/rust-cache@65012b490220f477f20ab979e35ae732e6de4e68 # v2
     - name: build avml-convert
       run: cargo build --release --bin avml-convert --locked
     - name: build avml-upload
