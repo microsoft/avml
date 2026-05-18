@@ -290,6 +290,12 @@ impl<'a, 'b> Snapshot<'a, 'b> {
     // given a set of ranges from iomem and a set of Blocks derived from the
     // pseudo-elf phys section headers, derive a set of ranges that can be used
     // to create a snapshot.
+    //
+    // Both `ranges` and `headers` must be sorted ascending and non-overlapping.
+    // For every header that overlaps a range, the intersection is emitted as a
+    // Block whose `offset` points at the corresponding position inside the
+    // kcore source. Sections of `range` that fall in gaps between PT_LOAD
+    // segments are skipped -- those addresses are not readable via kcore.
     fn find_kcore_blocks(ranges: &[Range<u64>], headers: &[Block]) -> Vec<Block> {
         let mut result = vec![];
 
@@ -297,38 +303,31 @@ impl<'a, 'b> Snapshot<'a, 'b> {
             let mut range = range.clone();
 
             for header in headers {
-                match (
-                    header.range.contains(&range.start),
-                    // TODO: ranges is currently inclusive, but not a
-                    // RangeInclusive.  this should be adjusted.
-                    header.range.contains(&(range.end.saturating_sub(1))),
-                ) {
-                    (true, true) => {
-                        let block = Block {
-                            offset: header
-                                .offset
-                                .saturating_add(range.start)
-                                .saturating_sub(header.range.start),
-                            range: range.clone(),
-                        };
-
-                        result.push(block);
-                        continue 'outer;
-                    }
-                    (true, false) => {
-                        let block = Block {
-                            offset: header
-                                .offset
-                                .saturating_add(range.start)
-                                .saturating_sub(header.range.start),
-                            range: range.start..header.range.end,
-                        };
-
-                        result.push(block);
-                        range.start = header.range.end;
-                    }
-                    _ => {}
+                // headers are sorted: once one starts past the remaining range,
+                // no later header can intersect it either.
+                if range.end <= header.range.start {
+                    continue 'outer;
                 }
+                // range starts after this header; try the next.
+                if range.start >= header.range.end {
+                    continue;
+                }
+
+                // overlap. emit the intersection.
+                let intersect_start = range.start.max(header.range.start);
+                let intersect_end = range.end.min(header.range.end);
+                result.push(Block {
+                    offset: header
+                        .offset
+                        .saturating_add(intersect_start)
+                        .saturating_sub(header.range.start),
+                    range: intersect_start..intersect_end,
+                });
+
+                if range.end <= header.range.end {
+                    continue 'outer;
+                }
+                range.start = header.range.end;
             }
         }
 
@@ -487,5 +486,72 @@ mod tests {
         let result = Snapshot::find_kcore_blocks(&ranges, &core_ranges);
 
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn translate_ranges_with_straddled_gap() {
+        // iomem range straddles a gap between two PT_LOAD segments. The
+        // slice inside the second segment must still be emitted.
+        let ranges = [Range {
+            start: 400_u64,
+            end: 900,
+        }];
+        let core_ranges = [
+            Block {
+                range: 100..500,
+                offset: 0,
+            },
+            Block {
+                range: 600..1000,
+                offset: 400,
+            },
+        ];
+
+        let expected = vec![
+            Block {
+                offset: 300,
+                range: 400..500,
+            },
+            Block {
+                offset: 400,
+                range: 600..900,
+            },
+        ];
+
+        assert_eq!(Snapshot::find_kcore_blocks(&ranges, &core_ranges), expected);
+    }
+
+    #[test]
+    fn translate_ranges_with_range_spanning_header() {
+        // iomem range fully contains a PT_LOAD segment and extends past it.
+        // Both the spanned-header slice and the post-header overlap must
+        // be emitted.
+        let ranges = [Range {
+            start: 0_u64,
+            end: 1500,
+        }];
+        let core_ranges = [
+            Block {
+                range: 100..500,
+                offset: 0,
+            },
+            Block {
+                range: 1000..2000,
+                offset: 400,
+            },
+        ];
+
+        let expected = vec![
+            Block {
+                offset: 0,
+                range: 100..500,
+            },
+            Block {
+                offset: 400,
+                range: 1000..1500,
+            },
+        ];
+
+        assert_eq!(Snapshot::find_kcore_blocks(&ranges, &core_ranges), expected);
     }
 }

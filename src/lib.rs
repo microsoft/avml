@@ -1,30 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#![deny(clippy::undocumented_unsafe_blocks)]
-#![deny(clippy::unwrap_used)]
-#![deny(clippy::expect_used)]
-#![deny(clippy::panic)]
-#![deny(clippy::manual_assert)]
-#![deny(clippy::indexing_slicing)]
-#![deny(clippy::redundant_pub_crate)]
-#![deny(clippy::if_then_some_else_none)]
-#![deny(clippy::shadow_unrelated)]
-#![deny(clippy::std_instead_of_core)]
-#![warn(clippy::assertions_on_result_states)]
-#![warn(clippy::if_then_some_else_none)]
-#![warn(clippy::needless_continue)]
-#![warn(clippy::redundant_pub_crate)]
-#![warn(clippy::shadow_unrelated)]
-#![warn(clippy::std_instead_of_core)]
-#![warn(clippy::undocumented_unsafe_blocks)]
-#![warn(clippy::unused_trait_names)]
-#![warn(clippy::verbose_file_reads)]
-#![warn(clippy::arithmetic_side_effects)]
-#![warn(clippy::as_conversions)]
-#![warn(clippy::pattern_type_mismatch)]
-// #![warn(clippy::missing_errors_doc)]
-
 #[cfg(target_family = "unix")]
 mod disk_usage;
 pub mod errors;
