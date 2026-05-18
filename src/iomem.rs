@@ -66,21 +66,17 @@ fn parse_file(path: &Path) -> Result<Vec<Range<u64>>, Error> {
 
 #[must_use]
 pub fn merge_ranges(mut ranges: Vec<Range<u64>>) -> Vec<Range<u64>> {
-    let mut result = vec![];
     ranges.sort_unstable_by_key(|r| r.start);
 
-    while !ranges.is_empty() {
-        let mut range = ranges.remove(0);
-
-        #[allow(clippy::indexing_slicing)]
-        while !ranges.is_empty() && range.end >= ranges[0].start {
-            let next = ranges.remove(0);
-            range = range.start..next.end;
+    let mut result: Vec<Range<u64>> = Vec::with_capacity(ranges.len());
+    for range in ranges {
+        match result.last_mut() {
+            Some(last) if last.end >= range.start => {
+                last.end = last.end.max(range.end);
+            }
+            _ => result.push(range),
         }
-
-        result.push(range);
     }
-
     result
 }
 
