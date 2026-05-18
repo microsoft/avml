@@ -92,6 +92,19 @@ impl FmtDebug for Error {
 
 pub type Result<T> = core::result::Result<T, Error>;
 
+impl Error {
+    /// True when the underlying failure is a pre-acquisition disk-usage
+    /// rejection. These are surfaced immediately rather than aggregated:
+    /// trying the next source won't change the answer.
+    fn is_disk_usage_exceeded(&self) -> bool {
+        matches!(
+            self,
+            Error::UnableToCreateSnapshotFromSource(inner, _)
+                if matches!(**inner, Error::DiskUsageEstimateExceeded { .. })
+        )
+    }
+}
+
 #[derive(Debug, Clone, ValueEnum)]
 pub enum Source {
     /// Provides a read-only view of physical memory.  Access to memory using
@@ -156,27 +169,6 @@ fn can_open(src: &Path) -> bool {
 fn is_kcore_ok() -> bool {
     metadata(Path::new("/proc/kcore")).is_ok_and(|x| x.len() > 0x2000)
         && can_open(Path::new("/proc/kcore"))
-}
-
-// try to perform an action, either returning on success, or yielding the error
-// to the caller for aggregation.
-//
-// This special cases `DiskUsageEstimateExceeded` errors, as we want this to
-// fail fast and bail out of the `try_method` caller.
-macro_rules! try_method {
-    ($func:expr) => {{
-        match $func {
-            Ok(x) => return Ok(x),
-            Err(err) => {
-                if let Error::UnableToCreateSnapshotFromSource(ref x, _) = err {
-                    if let Error::DiskUsageEstimateExceeded { .. } = **x {
-                        return Err(err);
-                    }
-                }
-                Box::new(err)
-            }
-        }
-    }};
 }
 
 pub struct Snapshot<'a, 'b> {
@@ -273,9 +265,21 @@ impl<'a, 'b> Snapshot<'a, 'b> {
                 return Err(Error::NoSourceAvailable);
             }
         } else {
-            let crash = try_method!(self.create_source(&Source::DevCrash));
-            let kcore = try_method!(self.create_source(&Source::ProcKcore));
-            let devmem = try_method!(self.create_source(&Source::DevMem));
+            let crash = match self.create_source(&Source::DevCrash) {
+                Ok(()) => return Ok(()),
+                Err(e) if e.is_disk_usage_exceeded() => return Err(e),
+                Err(e) => Box::new(e),
+            };
+            let kcore = match self.create_source(&Source::ProcKcore) {
+                Ok(()) => return Ok(()),
+                Err(e) if e.is_disk_usage_exceeded() => return Err(e),
+                Err(e) => Box::new(e),
+            };
+            let devmem = match self.create_source(&Source::DevMem) {
+                Ok(()) => return Ok(()),
+                Err(e) if e.is_disk_usage_exceeded() => return Err(e),
+                Err(e) => Box::new(e),
+            };
 
             return Err(Error::AllSourcesFailed {
                 crash,
