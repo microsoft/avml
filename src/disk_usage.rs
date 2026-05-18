@@ -90,10 +90,10 @@ fn check_max_usage_percentage(
 )]
 fn u64_to_f64(value: u64) -> Result<f64> {
     if value > EXCESSIVE_VALUE {
-        return Err(Error::Other(
-            "unable to convert u64 to f64",
-            format!("value is too large to convert to f64: {value}"),
-        ));
+        return Err(Error::Other {
+            context: "unable to convert u64 to f64",
+            detail: format!("value is too large to convert to f64: {value}"),
+        });
     }
     Ok(value as f64)
 }
@@ -112,10 +112,10 @@ fn u64_to_f64(value: u64) -> Result<f64> {
 )]
 fn f64_to_u64(value: f64) -> Result<u64> {
     if !value.is_sign_positive() {
-        return Err(Error::Other(
-            "unable to convert f64 to u64",
-            format!("value is not a positive f64: {value}"),
-        ));
+        return Err(Error::Other {
+            context: "unable to convert f64 to u64",
+            detail: format!("value is not a positive f64: {value}"),
+        });
     }
     Ok(value.trunc() as u64)
 }
@@ -133,8 +133,10 @@ fn estimate(ranges: &[Range<u64>]) -> u64 {
 }
 
 fn disk_usage(path: &Path) -> Result<DiskUsage> {
-    let path_as_cstr = CString::new(path.as_os_str().as_bytes())
-        .map_err(|e| Error::Other("unable to convert path to CString", e.to_string()))?;
+    let path_as_cstr = CString::new(path.as_os_str().as_bytes()).map_err(|e| Error::Other {
+        context: "unable to convert path to CString",
+        detail: e.to_string(),
+    })?;
 
     // SAFETY: this is the only way to initialize the statfs64 struct
     let mut statfs: libc::statfs64 = unsafe { zeroed() };
@@ -145,10 +147,10 @@ fn disk_usage(path: &Path) -> Result<DiskUsage> {
         return Err(Error::Disk(std::io::Error::last_os_error()));
     }
 
-    let f_bsize: u64 = statfs
-        .f_bsize
-        .try_into()
-        .map_err(|e| Error::Other("unable to identify block size", format!("{e}")))?;
+    let f_bsize: u64 = statfs.f_bsize.try_into().map_err(|e| Error::Other {
+        context: "unable to identify block size",
+        detail: format!("{e}"),
+    })?;
 
     let total = statfs.f_blocks.saturating_mul(f_bsize);
     let free = statfs.f_bavail.saturating_mul(f_bsize);
@@ -172,8 +174,10 @@ mod tests {
 
     #[test]
     fn test_disk_usage() -> Result<()> {
-        let current_exe = std::env::current_exe()
-            .map_err(|e| Error::Other("unable to get current exe", e.to_string()))?;
+        let current_exe = std::env::current_exe().map_err(|e| Error::Other {
+            context: "unable to get current exe",
+            detail: e.to_string(),
+        })?;
         // check that we can get disk usage for at least one file system, here
         // we check file system that the current exe resides on
         let result = disk_usage(&current_exe)?;
@@ -221,8 +225,10 @@ mod tests {
 
     #[test]
     fn test_check_max_usable() -> Result<()> {
-        let ten = NonZeroU64::new(10)
-            .ok_or_else(|| Error::Other("unable to create NonZeroU64", String::new()))?;
+        let ten = NonZeroU64::new(10).ok_or(Error::Other {
+            context: "unable to create NonZeroU64",
+            detail: String::new(),
+        })?;
         check_max_usage(1, ten)?;
         check_max_usage(10, ten)?;
         assert!(check_max_usage(11 * 1024 * 1024, ten).is_err());

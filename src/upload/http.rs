@@ -11,8 +11,12 @@ use url::Url;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    #[error("error reading file: {1}")]
-    Io(#[source] std::io::Error, PathBuf),
+    #[error("error reading file {path:?}")]
+    Io {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
 
     #[error("HTTP request error")]
     Request(#[from] reqwest::Error),
@@ -30,14 +34,18 @@ pub enum Error {
 /// - The server returns an unexpected status code
 #[cfg(feature = "put")]
 pub async fn put(filename: &Path, url: &Url) -> Result<(), Error> {
-    let file = File::open(&filename)
-        .await
-        .map_err(|e| Error::Io(e, filename.to_owned()))?;
+    let file = File::open(&filename).await.map_err(|source| Error::Io {
+        path: filename.to_owned(),
+        source,
+    })?;
 
     let size = file
         .metadata()
         .await
-        .map_err(|e| Error::Io(e, filename.to_owned()))?
+        .map_err(|source| Error::Io {
+            path: filename.to_owned(),
+            source,
+        })?
         .len();
 
     let status = Status::new(Some(size));

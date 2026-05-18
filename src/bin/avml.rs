@@ -101,7 +101,10 @@ async fn upload(config: &Config) -> Result<()> {
     if delete && config.delete {
         remove_file(&config.filename)
             .await
-            .map_err(|e| Error::Io(e, "unable to remove snapshot"))?;
+            .map_err(|source| Error::Io {
+                context: "unable to remove snapshot",
+                source,
+            })?;
     }
 
     Ok(())
