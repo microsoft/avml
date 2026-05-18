@@ -1,17 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#![deny(clippy::unwrap_used)]
-#![deny(clippy::expect_used)]
-#![deny(clippy::panic)]
-#![deny(clippy::manual_assert)]
-#![deny(clippy::indexing_slicing)]
-
 use avml::{Result, Snapshot, Source, iomem};
 use clap::Parser;
 #[cfg(feature = "blobstore")]
-use std::num::NonZeroUsize;
-use std::{num::NonZeroU64, ops::Range, path::PathBuf};
+use core::num::NonZeroUsize;
+use core::{num::NonZeroU64, ops::Range};
+use std::path::PathBuf;
 #[cfg(any(feature = "blobstore", feature = "put"))]
 use {avml::Error, tokio::fs::remove_file, url::Url};
 
@@ -86,7 +81,7 @@ async fn upload(config: &Config) -> Result<()> {
 
     #[cfg(feature = "put")]
     {
-        if let Some(url) = &config.url {
+        if let Some(ref url) = config.url {
             avml::put(&config.filename, url).await?;
             delete = true;
         }
@@ -94,7 +89,7 @@ async fn upload(config: &Config) -> Result<()> {
 
     #[cfg(feature = "blobstore")]
     {
-        if let Some(sas_url) = &config.sas_url {
+        if let Some(ref sas_url) = config.sas_url {
             let uploader = avml::BlobUploader::new(sas_url)?
                 .block_size(config.sas_block_size)
                 .concurrency(config.sas_block_concurrency);

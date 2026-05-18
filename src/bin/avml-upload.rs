@@ -1,18 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#![deny(clippy::unwrap_used)]
-#![deny(clippy::expect_used)]
-#![deny(clippy::panic)]
-#![deny(clippy::manual_assert)]
-#![deny(clippy::indexing_slicing)]
-
 use avml::{BlobUploader, Result, put};
 use clap::{Parser, Subcommand};
-use std::{
-    num::{NonZeroU64, NonZeroUsize},
-    path::PathBuf,
-};
+use core::num::{NonZeroU64, NonZeroUsize};
+use std::path::PathBuf;
 use url::Url;
 
 #[derive(Parser)]

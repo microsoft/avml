@@ -72,7 +72,10 @@ pub fn merge_ranges(mut ranges: Vec<Range<u64>>) -> Vec<Range<u64>> {
     while !ranges.is_empty() {
         let mut range = ranges.remove(0);
 
-        #[allow(clippy::indexing_slicing)]
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "ranges[0] guarded by the !ranges.is_empty() check above"
+        )]
         while !ranges.is_empty() && range.end >= ranges[0].start {
             let next = ranges.remove(0);
             range = range.start..next.end;
@@ -109,6 +112,7 @@ pub fn split_ranges(ranges: Vec<Range<u64>>, max_size: u64) -> Vec<Range<u64>> {
 mod tests {
     use super::*;
     use insta::assert_json_snapshot;
+    use std::path::PathBuf;
 
     #[test]
     fn test_merge_ranges() {
@@ -125,9 +129,10 @@ mod tests {
 
     #[test]
     fn test_parse_iomem() -> Result<(), Error> {
+        let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test");
         for (filename, expected) in [
             (
-                Path::new("test/iomem.txt"),
+                "iomem.txt",
                 vec![
                     4096..654_335,
                     1_048_576..1_073_676_287,
@@ -135,7 +140,7 @@ mod tests {
                 ],
             ),
             (
-                Path::new("test/iomem-2.txt"),
+                "iomem-2.txt",
                 vec![
                     4096..655_359,
                     1_048_576..1_055_838_207,
@@ -145,7 +150,7 @@ mod tests {
                 ],
             ),
             (
-                Path::new("test/iomem-3.txt"),
+                "iomem-3.txt",
                 vec![
                     65_536..649_215,
                     1_048_576..2_146_303_999,
@@ -153,7 +158,7 @@ mod tests {
                 ],
             ),
             (
-                Path::new("test/iomem-4.txt"),
+                "iomem-4.txt",
                 vec![
                     4_096..655_359,
                     1_048_576..1_423_523_839,
@@ -165,7 +170,7 @@ mod tests {
                 ],
             ),
             (
-                Path::new("test/iomem-5.txt"),
+                "iomem-5.txt",
                 vec![
                     4_096..655_359,
                     1_048_576..175_058_967,
@@ -187,7 +192,7 @@ mod tests {
                 ],
             ),
         ] {
-            let ranges = parse_file(filename)?;
+            let ranges = parse_file(&fixtures.join(filename))?;
             assert_eq!(ranges, expected);
         }
 
