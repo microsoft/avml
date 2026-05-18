@@ -41,6 +41,14 @@ pub enum Error {
 
 type Result<T> = core::result::Result<T, Error>;
 
+/// Largest block AVML emits in a single header. Ranges larger than this
+/// are split into `MAX_BLOCK_SIZE`-sized chunks before being written.
+///
+/// Blocks at or below this threshold are buffered fully in memory so
+/// all-zero blocks can be elided (`copy_if_nonzero`); larger blocks
+/// stream straight through without zero-elision. So this constant also
+/// caps the per-block buffer allocation (currently 16 MiB) and sets
+/// the granularity at which zero regions are skipped.
 pub const MAX_BLOCK_SIZE: u64 = 0x1000 * 0x1000;
 const PAGE_SIZE: usize = 0x1000;
 const HEADER_LEN: usize = 32;
