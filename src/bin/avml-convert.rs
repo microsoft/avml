@@ -18,7 +18,10 @@ use std::{
 
 fn convert(src: &Path, dst: &Path, compress: bool) -> Result<()> {
     let src_len = metadata(src)
-        .map_err(|e| image::Error::Io(e, "unable to read source size"))?
+        .map_err(|source| image::Error::Io {
+            context: "unable to read source size",
+            source,
+        })?
         .len();
     let mut image = image::Image::<File, File>::new(1, src, dst)?;
     convert_image(&mut image, src_len, compress)
@@ -31,9 +34,13 @@ where
 {
     image.version = if compress { 2 } else { 1 };
     loop {
-        let current = image.src.stream_position().map_err(|e| {
-            image::Error::Io(e, "unable to get current offset into the memory source")
-        })?;
+        let current = image
+            .src
+            .stream_position()
+            .map_err(|source| image::Error::Io {
+                context: "unable to get current offset into the memory source",
+                source,
+            })?;
         if current >= src_len {
             break;
         }
@@ -51,18 +58,23 @@ where
 {
     image.version = 1;
     loop {
-        let current = image.src.stream_position().map_err(|e| {
-            image::Error::Io(e, "unable to get the current offset into the memory source")
-        })?;
+        let current = image
+            .src
+            .stream_position()
+            .map_err(|source| image::Error::Io {
+                context: "unable to get the current offset into the memory source",
+                source,
+            })?;
         if current >= src_len {
             break;
         }
-        let current_dst = image.dst.stream_position().map_err(|e| {
-            image::Error::Io(
-                e,
-                "unable to get the current offset into the destination stream",
-            )
-        })?;
+        let current_dst = image
+            .dst
+            .stream_position()
+            .map_err(|source| image::Error::Io {
+                context: "unable to get the current offset into the destination stream",
+                source,
+            })?;
 
         let header = image.read_header()?;
         let mut zeros = vec![0; ONE_MB];
@@ -73,7 +85,10 @@ where
             image
                 .dst
                 .write_all(&zeros)
-                .map_err(|e| image::Error::Io(e, "unable to write padding bytes"))?;
+                .map_err(|source| image::Error::Io {
+                    context: "unable to write padding bytes",
+                    source,
+                })?;
             unmapped -= ONE_MB;
         }
         if unmapped > 0 {
@@ -81,7 +96,10 @@ where
             image
                 .dst
                 .write_all(&zeros)
-                .map_err(|e| image::Error::Io(e, "unable to write padding bytes"))?;
+                .map_err(|source| image::Error::Io {
+                    context: "unable to write padding bytes",
+                    source,
+                })?;
         }
 
         let size = header.size()?;
@@ -90,20 +108,27 @@ where
             1 => {
                 let mut handle =
                     (&mut image.src).take(size.try_into().map_err(image::Error::IntConversion)?);
-                copy(&mut handle, &mut image.dst)
-                    .map_err(|e| image::Error::Io(e, "unable to copy image data"))?;
+                copy(&mut handle, &mut image.dst).map_err(|source| image::Error::Io {
+                    context: "unable to copy image data",
+                    source,
+                })?;
             }
             2 => {
                 let mut decoder = FrameDecoder::new(&mut image.src)
                     .take(size.try_into().map_err(image::Error::IntConversion)?);
-                copy(&mut decoder, &mut image.dst)
-                    .map_err(|e| image::Error::Io(e, "unable to copy image data"))?;
+                copy(&mut decoder, &mut image.dst).map_err(|source| image::Error::Io {
+                    context: "unable to copy image data",
+                    source,
+                })?;
                 image
                     .src
                     .seek(SeekFrom::Current(8))
-                    .map_err(|e| image::Error::Io(e, "unable to seek past the compressed size"))?;
+                    .map_err(|source| image::Error::Io {
+                        context: "unable to seek past the compressed size",
+                        source,
+                    })?;
             }
-            _ => unimplemented!(),
+            _ => return Err(image::Error::UnimplementedVersion.into()),
         }
     }
 
@@ -112,7 +137,10 @@ where
 
 fn convert_to_raw(src: &Path, dst: &Path) -> Result<()> {
     let src_len = metadata(src)
-        .map_err(|e| image::Error::Io(e, "unable to get source file size"))?
+        .map_err(|source| image::Error::Io {
+            context: "unable to get source file size",
+            source,
+        })?
         .len();
     let mut image = image::Image::<File, File>::new(1, src, dst)?;
     convert_to_raw_image(&mut image, src_len)
@@ -141,7 +169,10 @@ where
 
 fn convert_from_raw(src: &Path, dst: &Path, compress: bool) -> Result<()> {
     let src_len = metadata(src)
-        .map_err(|e| image::Error::Io(e, "unable to read source size"))?
+        .map_err(|source| image::Error::Io {
+            context: "unable to read source size",
+            source,
+        })?
         .len();
     let mut image = image::Image::<File, File>::new(1, src, dst)?;
     encode_raw_image(&mut image, src_len, compress)

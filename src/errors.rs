@@ -23,8 +23,12 @@ pub enum Error {
     #[error("unable to upload file to Azure Storage")]
     Blob(#[from] crate::upload::blobstore::Error),
 
-    #[error("io error: {0}")]
-    Io(#[source] IoError, &'static str),
+    #[error("io error: {context}")]
+    Io {
+        context: &'static str,
+        #[source]
+        source: IoError,
+    },
 
     #[error("no conversion required")]
     NoConversionRequired,

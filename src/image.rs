@@ -17,8 +17,12 @@ use std::{
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    #[error("io error: {1}")]
-    Io(#[source] std::io::Error, &'static str),
+    #[error("io error: {context}")]
+    Io {
+        context: &'static str,
+        #[source]
+        source: std::io::Error,
+    },
 
     #[error("invalid padding")]
     InvalidPadding,
@@ -68,23 +72,30 @@ impl Header {
     /// - The magic number or version is invalid
     /// - The padding value is not zero
     pub fn read<R: Read>(mut src: R) -> Result<Self> {
-        let magic = src
-            .read_u32::<LittleEndian>()
-            .map_err(|e| Error::Io(e, "unable to read header magic"))?;
-        let version = src
-            .read_u32::<LittleEndian>()
-            .map_err(|e| Error::Io(e, "unable to read header version"))?;
-        let start = src
-            .read_u64::<LittleEndian>()
-            .map_err(|e| Error::Io(e, "unable to read header start offset"))?;
+        let magic = src.read_u32::<LittleEndian>().map_err(|source| Error::Io {
+            context: "unable to read header magic",
+            source,
+        })?;
+        let version = src.read_u32::<LittleEndian>().map_err(|source| Error::Io {
+            context: "unable to read header version",
+            source,
+        })?;
+        let start = src.read_u64::<LittleEndian>().map_err(|source| Error::Io {
+            context: "unable to read header start offset",
+            source,
+        })?;
         let end = src
             .read_u64::<LittleEndian>()
-            .map_err(|e| Error::Io(e, "unable to read header end offset"))?
+            .map_err(|source| Error::Io {
+                context: "unable to read header end offset",
+                source,
+            })?
             .checked_add(1)
             .ok_or(Error::TooLarge)?;
-        let padding = src
-            .read_u64::<LittleEndian>()
-            .map_err(|e| Error::Io(e, "unable to read header padding"))?;
+        let padding = src.read_u64::<LittleEndian>().map_err(|source| Error::Io {
+            context: "unable to read header padding",
+            source,
+        })?;
         if padding != 0 {
             return Err(Error::InvalidPadding);
         }
@@ -124,8 +135,10 @@ impl Header {
         W: Write,
     {
         let bytes = self.encode()?;
-        dst.write_all(&bytes)
-            .map_err(|e| Error::Io(e, "unable to write header"))?;
+        dst.write_all(&bytes).map_err(|source| Error::Io {
+            context: "unable to write header",
+            source,
+        })?;
         Ok(())
     }
 
@@ -151,23 +164,33 @@ where
     if align_src {
         let mut buf = vec![0; PAGE_SIZE];
         while size >= PAGE_SIZE {
-            src.read_exact(&mut buf)
-                .map_err(|e| Error::Io(e, "unable to read memory page"))?;
-            dst.write_all(&buf)
-                .map_err(|e| Error::Io(e, "unable to write memory page"))?;
+            src.read_exact(&mut buf).map_err(|source| Error::Io {
+                context: "unable to read memory page",
+                source,
+            })?;
+            dst.write_all(&buf).map_err(|source| Error::Io {
+                context: "unable to write memory page",
+                source,
+            })?;
             size = size.saturating_sub(PAGE_SIZE);
         }
         if size > 0 {
             buf.resize(size, 0);
-            src.read_exact(&mut buf)
-                .map_err(|e| Error::Io(e, "unable to read memory page"))?;
-            dst.write_all(&buf)
-                .map_err(|e| Error::Io(e, "unable to write memory page"))?;
+            src.read_exact(&mut buf).map_err(|source| Error::Io {
+                context: "unable to read memory page",
+                source,
+            })?;
+            dst.write_all(&buf).map_err(|source| Error::Io {
+                context: "unable to write memory page",
+                source,
+            })?;
         }
     } else {
         let mut src = src.take(size.try_into()?);
-        std::io::copy(&mut src, &mut dst)
-            .map_err(|e| Error::Io(e, "unable to copy memory pages"))?;
+        std::io::copy(&mut src, &mut dst).map_err(|source| Error::Io {
+            context: "unable to copy memory pages",
+            source,
+        })?;
     }
     Ok(())
 }
@@ -187,7 +210,10 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
             .create(true)
             .truncate(true)
             .open(path)
-            .map_err(|e| Error::Io(e, "unable to create snapshot file"))
+            .map_err(|source| Error::Io {
+                context: "unable to create snapshot file",
+                source,
+            })
     }
 
     #[cfg(target_family = "unix")]
@@ -199,7 +225,10 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
             .create(true)
             .truncate(true)
             .open(path)
-            .map_err(|e| Error::Io(e, "unable to create snapshot file"))
+            .map_err(|source| Error::Io {
+                context: "unable to create snapshot file",
+                source,
+            })
     }
 
     /// Creates a new Image with the specified version, source filename, and destination filename.
@@ -213,8 +242,10 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
         src_filename: &Path,
         dst_filename: &Path,
     ) -> Result<Image<File, File>> {
-        let src_filename =
-            canonicalize(src_filename).map_err(|e| Error::Io(e, "unable to canonicalize path"))?;
+        let src_filename = canonicalize(src_filename).map_err(|source| Error::Io {
+            context: "unable to canonicalize path",
+            source,
+        })?;
         let align_src = [
             Path::new("/dev/crash"),
             Path::new("/dev/mem"),
@@ -225,7 +256,10 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
         let src = OpenOptions::new()
             .read(true)
             .open(&src_filename)
-            .map_err(|e| Error::Io(e, "unable to open memory source"))?;
+            .map_err(|source| Error::Io {
+                context: "unable to open memory source",
+                source,
+            })?;
 
         let dst = Self::open_dst(dst_filename)?;
 
@@ -253,7 +287,10 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
         if block.offset > 0 {
             self.src
                 .seek(SeekFrom::Start(block.offset))
-                .map_err(|e| Error::Io(e, "unable to see to page"))?;
+                .map_err(|source| Error::Io {
+                    context: "unable to see to page",
+                    source,
+                })?;
         }
 
         self.copy_block(block.range.clone())?;
@@ -321,9 +358,10 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
         } else {
             let mut encoder = SnapCountWriter::new(&mut self.dst);
             copy(size, self.align_src, &mut self.src, &mut encoder)?;
-            encoder
-                .finalize()
-                .map_err(|e| Error::Io(e, "unable to finalize compressed block"))?;
+            encoder.finalize().map_err(|source| Error::Io {
+                context: "unable to finalize compressed block",
+                source,
+            })?;
         }
         Ok(())
     }
@@ -344,17 +382,20 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
 
         self.write_header(range.clone())?;
         if self.version == 1 {
-            self.dst
-                .write_all(&buf)
-                .map_err(|e| Error::Io(e, "unable to write non-zero block"))?;
+            self.dst.write_all(&buf).map_err(|source| Error::Io {
+                context: "unable to write non-zero block",
+                source,
+            })?;
         } else {
             let mut encoder = SnapCountWriter::new(&mut self.dst);
-            encoder
-                .write_all(&buf)
-                .map_err(|e| Error::Io(e, "unable to write compressed block"))?;
-            encoder
-                .finalize()
-                .map_err(|e| Error::Io(e, "unable to finalize compressed block"))?;
+            encoder.write_all(&buf).map_err(|source| Error::Io {
+                context: "unable to write compressed block",
+                source,
+            })?;
+            encoder.finalize().map_err(|source| Error::Io {
+                context: "unable to finalize compressed block",
+                source,
+            })?;
         }
         Ok(())
     }
@@ -370,14 +411,19 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
                 {
                     let size = range_len(header.range.clone());
                     let mut decoder = FrameDecoder::new(&mut self.src).take(size);
-                    std::io::copy(&mut decoder, &mut self.dst)
-                        .map_err(|e| Error::Io(e, "unable to copy compressed data"))?;
+                    std::io::copy(&mut decoder, &mut self.dst).map_err(|source| Error::Io {
+                        context: "unable to copy compressed data",
+                        source,
+                    })?;
                 }
                 self.src
                     .seek(SeekFrom::Current(8))
-                    .map_err(|e| Error::Io(e, "unable to seek passed compressed len"))?;
+                    .map_err(|source| Error::Io {
+                        context: "unable to seek passed compressed len",
+                        source,
+                    })?;
             }
-            _ => unimplemented!(),
+            _ => return Err(Error::UnimplementedVersion),
         }
 
         Ok(())
