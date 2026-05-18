@@ -38,8 +38,12 @@ pub enum Error {
     #[error("unable to create memory snapshot")]
     UnableToCreateMemorySnapshot(#[from] crate::image::Error),
 
-    #[error("unable to create memory snapshot from source: {1}")]
-    UnableToCreateSnapshotFromSource(#[source] Box<Error>, Source),
+    #[error("unable to create memory snapshot from source: {src}")]
+    UnableToCreateSnapshotFromSource {
+        src: Source,
+        #[source]
+        source: Box<Error>,
+    },
 
     #[error("no memory source available")]
     NoSourceAvailable,
@@ -134,7 +138,7 @@ impl FmtDisplay for Source {
             Self::DevCrash => write!(f, "/dev/crash"),
             Self::DevMem => write!(f, "/dev/mem"),
             Self::ProcKcore => write!(f, "/proc/kcore"),
-            Self::Raw(ref path) => write!(f, "{}", path.display()),
+            Self::Raw(ref path) => write!(f, "{path:?}"),
         }
     }
 }
@@ -168,7 +172,7 @@ macro_rules! try_method {
         match $func {
             Ok(x) => return Ok(x),
             Err(err) => {
-                if let Error::UnableToCreateSnapshotFromSource(ref x, _) = err {
+                if let Error::UnableToCreateSnapshotFromSource { source: ref x, .. } = err {
                     if let Error::DiskUsageEstimateExceeded { .. } = **x {
                         return Err(err);
                     }
@@ -245,7 +249,10 @@ impl<'a, 'b> Snapshot<'a, 'b> {
             Source::DevMem => self.phys(Path::new("/dev/mem")),
             Source::Raw(ref s) => self.phys(s),
         }
-        .map_err(|e| Error::UnableToCreateSnapshotFromSource(Box::new(e), src.clone()))
+        .map_err(|e| Error::UnableToCreateSnapshotFromSource {
+            src: src.clone(),
+            source: Box::new(e),
+        })
     }
 
     /// Create a memory snapshot
