@@ -325,62 +325,45 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
 
     /// Copies a memory block from the source reader to the destination writer.
     ///
+    /// Ranges larger than `MAX_BLOCK_SIZE` are split into `MAX_BLOCK_SIZE`
+    /// chunks. The chunk granularity determines how aggressively zero
+    /// regions are elided (`copy_if_nonzero`) and caps the per-chunk
+    /// in-memory buffer.
+    ///
+    /// This applies to both v1 (LiME) and v2 (AVML compressed) output. For
+    /// v1 specifically, a single iomem range larger than `MAX_BLOCK_SIZE`
+    /// now produces multiple LiME records in the output instead of one.
+    /// The LiME format is a sequence of records walked in order, and
+    /// existing v1 output already contains gaps between iomem ranges, so
+    /// readers that handle the existing inter-range gaps will handle the
+    /// new intra-range gaps the same way. Tools that assume a strict
+    /// one-record-per-iomem-range mapping will see a behavior change.
+    ///
     /// # Errors
     /// Returns an error if:
     /// - Reading from the source fails
     /// - Writing to the destination fails
     /// - Size conversion from u64 to usize fails
-    pub fn copy_block(&mut self, mut range: Range<u64>) -> Result<()>
+    pub fn copy_block(&mut self, range: Range<u64>) -> Result<()>
     where
         R: Read,
         W: Write,
     {
-        if self.version == 2 {
-            while range.end.saturating_sub(range.start) > MAX_BLOCK_SIZE {
-                let new_range = Range {
-                    start: range.start,
-                    end: range
-                        .start
-                        .checked_add(MAX_BLOCK_SIZE)
-                        .ok_or(Error::TooLarge)?,
-                };
-                self.copy_block_impl(new_range)?;
-                range.start = range.start.saturating_add(MAX_BLOCK_SIZE);
-            }
-        }
-        if range.end > range.start {
-            self.copy_block_impl(range)?;
-        }
-
-        Ok(())
-    }
-
-    fn copy_block_impl(&mut self, range: Range<u64>) -> Result<()> {
-        if range_len(range.clone()) > MAX_BLOCK_SIZE {
-            self.copy_large_block(range)
-        } else {
-            self.copy_if_nonzero(range)
-        }
-    }
-
-    fn copy_large_block(&mut self, range: Range<u64>) -> Result<()> {
-        self.write_header(range.clone())?;
-        let size = range_usize(range.clone())?;
-
-        if self.version == 1 {
-            copy(size, self.align_src, &mut self.src, &mut self.dst)?;
-        } else {
-            let mut encoder = SnapCountWriter::new(&mut self.dst);
-            copy(size, self.align_src, &mut self.src, &mut encoder)?;
-            encoder.finalize().map_err(|source| Error::Io {
-                context: "unable to finalize compressed block",
-                source,
-            })?;
+        let mut start = range.start;
+        while start < range.end {
+            let end = range
+                .end
+                .min(start.checked_add(MAX_BLOCK_SIZE).ok_or(Error::TooLarge)?);
+            self.copy_if_nonzero(start..end)?;
+            start = end;
         }
         Ok(())
     }
 
-    // read the entire block into memory, and only write it if it's not empty
+    // read the entire block into memory, and only write it if it's not empty.
+    //
+    // Caller (`copy_block`) guarantees `range_len(range) <= MAX_BLOCK_SIZE`,
+    // which bounds the in-memory allocation.
     fn copy_if_nonzero(&mut self, range: Range<u64>) -> Result<()> {
         let size = range_usize(range.clone())?;
 
