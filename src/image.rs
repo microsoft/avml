@@ -330,10 +330,10 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
     /// regions are elided (`copy_if_nonzero`) and caps the per-chunk
     /// in-memory buffer.
     ///
-    /// This applies to both v1 (LiME) and v2 (AVML compressed) output. For
+    /// This applies to both v1 (`LiME`) and v2 (AVML compressed) output. For
     /// v1 specifically, a single iomem range larger than `MAX_BLOCK_SIZE`
-    /// now produces multiple LiME records in the output instead of one.
-    /// The LiME format is a sequence of records walked in order, and
+    /// now produces multiple `LiME` records in the output instead of one.
+    /// The `LiME` format is a sequence of records walked in order, and
     /// existing v1 output already contains gaps between iomem ranges, so
     /// readers that handle the existing inter-range gaps will handle the
     /// new intra-range gaps the same way. Tools that assume a strict
