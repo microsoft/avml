@@ -36,8 +36,12 @@ pub enum Error {
     #[error("unsupported format")]
     UnsupportedFormat,
 
-    #[error("write block failed: {0:?}")]
-    WriteBlock(Range<u64>),
+    #[error("write block failed: {range:?}")]
+    WriteBlock {
+        range: Range<u64>,
+        #[source]
+        source: Box<Error>,
+    },
 
     #[error(transparent)]
     IntConversion(#[from] core::num::TryFromIntError),
@@ -285,8 +289,10 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
     /// Returns an error if writing any block fails
     pub fn write_blocks(&mut self, blocks: &[Block]) -> Result<()> {
         for block in blocks {
-            self.write_block(block)
-                .map_err(|_| Error::WriteBlock(block.range.clone()))?;
+            self.write_block(block).map_err(|e| Error::WriteBlock {
+                range: block.range.clone(),
+                source: Box::new(e),
+            })?;
         }
         Ok(())
     }
