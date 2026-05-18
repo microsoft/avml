@@ -42,6 +42,25 @@ url = {version="2.5", optional=true, default-features=false}
 insta = {version="1.47", features=["json"]}
 rand = {version="0.10", default-features=false, features=["std_rng"]}
 
+[lints.clippy]
+arithmetic_side_effects = "warn"
+as_conversions = "warn"
+assertions_on_result_states = "warn"
+expect_used = "deny"
+if_then_some_else_none = "deny"
+indexing_slicing = "deny"
+manual_assert = "deny"
+needless_continue = "warn"
+panic = "deny"
+pattern_type_mismatch = "warn"
+redundant_pub_crate = "deny"
+shadow_unrelated = "deny"
+std_instead_of_core = "deny"
+undocumented_unsafe_blocks = "deny"
+unused_trait_names = "warn"
+unwrap_used = "deny"
+verbose_file_reads = "warn"
+
 [profile.release]
 opt-level="z"
 lto=true

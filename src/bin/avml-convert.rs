@@ -1,12 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#![deny(clippy::unwrap_used)]
-#![deny(clippy::expect_used)]
-#![deny(clippy::panic)]
-#![deny(clippy::manual_assert)]
-#![deny(clippy::indexing_slicing)]
-
 use avml::{Error, ONE_MB, Result, image};
 use clap::{Parser, ValueEnum};
 use snap::read::FrameDecoder;
@@ -67,14 +61,14 @@ where
         let header = image.read_header()?;
         let mut zeros = vec![0; ONE_MB];
 
-        let mut unmapped = usize::try_from(header.range.start - current_dst)
+        let mut unmapped = usize::try_from(header.range.start.saturating_sub(current_dst))
             .map_err(image::Error::IntConversion)?;
         while unmapped > ONE_MB {
             image
                 .dst
                 .write_all(&zeros)
                 .map_err(|e| image::Error::Io(e, "unable to write padding bytes"))?;
-            unmapped -= ONE_MB;
+            unmapped = unmapped.saturating_sub(ONE_MB);
         }
         if unmapped > 0 {
             zeros.resize(unmapped, 0);
@@ -195,7 +189,7 @@ fn main() -> Result<()> {
 mod tests {
     use crate::{convert_image, convert_to_raw_image, encode_raw_image};
     use avml::{Result, image};
-    use rand::{Rng, SeedableRng, rngs::SmallRng};
+    use rand::{Rng as _, SeedableRng as _, rngs::SmallRng};
     use std::io::Cursor;
 
     fn memory_image(src: &[u8]) -> image::Image<Cursor<&[u8]>, Cursor<Vec<u8>>> {
