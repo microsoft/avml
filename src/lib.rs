@@ -22,11 +22,3 @@ pub use crate::{
 pub const ONE_MB: usize = 1024 * 1024;
 
 pub type Result<T> = core::result::Result<T, crate::errors::Error>;
-
-pub(crate) fn indent<T: AsRef<str>>(data: T, indent: usize) -> String {
-    data.as_ref()
-        .split('\n')
-        .map(|line| format!("{:indent$}{line}", ""))
-        .collect::<Vec<_>>()
-        .join("\n")
-}

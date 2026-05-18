@@ -25,7 +25,7 @@ use std::{
 #[derive(thiserror::Error)]
 pub enum Error {
     #[error("unable to parse elf structures: {0}")]
-    Elf(elf::ParseError),
+    Elf(#[from] elf::ParseError),
 
     #[error("locked down /proc/kcore")]
     LockedDownKcore,
@@ -41,14 +41,47 @@ pub enum Error {
     #[error("unable to create memory snapshot from source: {1}")]
     UnableToCreateSnapshotFromSource(#[source] Box<Error>, Source),
 
-    #[error("unable to create memory snapshot: {0}")]
-    UnableToCreateSnapshot(String),
+    #[error("no memory source available")]
+    NoSourceAvailable,
 
-    #[error("{0}: {1}")]
-    Other(&'static str, String),
+    #[error(
+        "all memory sources failed:\n{}",
+        fmt_all_sources(crash, kcore, devmem)
+    )]
+    AllSourcesFailed {
+        crash: Box<Error>,
+        kcore: Box<Error>,
+        devmem: Box<Error>,
+    },
+
+    #[error("unable to parse /proc/kcore: {0}")]
+    KcoreParse(&'static str),
+
+    #[error("{context}: {detail}")]
+    Other {
+        context: &'static str,
+        detail: String,
+    },
 
     #[error("disk error")]
     Disk(#[source] std::io::Error),
+}
+
+fn fmt_all_sources(crash: &Error, kcore: &Error, devmem: &Error) -> String {
+    use core::error::Error as _;
+    use core::fmt::Write as _;
+    let mut buf = String::new();
+    for (name, err) in [("crash", crash), ("kcore", kcore), ("devmem", devmem)] {
+        let _ = writeln!(buf, "  {name}: {err}");
+        let mut source: Option<&dyn core::error::Error> = err.source();
+        let mut depth = 4_usize;
+        while let Some(s) = source {
+            let _ = writeln!(buf, "{:depth$}caused by: {s}", "");
+            source = s.source();
+            depth = depth.saturating_add(2);
+        }
+    }
+    buf.trim_end().to_string()
 }
 
 impl FmtDebug for Error {
@@ -125,8 +158,8 @@ fn is_kcore_ok() -> bool {
         && can_open(Path::new("/proc/kcore"))
 }
 
-// try to perform an action, either returning on success, or having the result
-// of the error in an indented string.
+// try to perform an action, either returning on success, or yielding the error
+// to the caller for aggregation.
 //
 // This special cases `DiskUsageEstimateExceeded` errors, as we want this to
 // fail fast and bail out of the `try_method` caller.
@@ -140,7 +173,7 @@ macro_rules! try_method {
                         return Err(err);
                     }
                 }
-                crate::indent(format!("{:?}", err), 4)
+                Box::new(err)
             }
         }
     }};
@@ -237,18 +270,18 @@ impl<'a, 'b> Snapshot<'a, 'b> {
             } else if can_open(Path::new("/dev/mem")) {
                 self.create_source(&Source::DevMem)?;
             } else {
-                return Err(Error::UnableToCreateSnapshot(
-                    "no source available".to_string(),
-                ));
+                return Err(Error::NoSourceAvailable);
             }
         } else {
-            let crash_err = try_method!(self.create_source(&Source::DevCrash));
-            let kcore_err = try_method!(self.create_source(&Source::ProcKcore));
-            let devmem_err = try_method!(self.create_source(&Source::DevMem));
+            let crash = try_method!(self.create_source(&Source::DevCrash));
+            let kcore = try_method!(self.create_source(&Source::ProcKcore));
+            let devmem = try_method!(self.create_source(&Source::DevMem));
 
-            let reason = [String::new(), crash_err, kcore_err, devmem_err].join("\n");
-
-            return Err(Error::UnableToCreateSnapshot(crate::indent(reason, 4)));
+            return Err(Error::AllSourcesFailed {
+                crash,
+                kcore,
+                devmem,
+            });
         }
 
         Ok(())
@@ -321,10 +354,10 @@ impl<'a, 'b> Snapshot<'a, 'b> {
     #[cfg(not(target_family = "unix"))]
     fn check_disk_usage<R: Read + Seek, W: Write>(&self, _: &Image<R, W>) -> Result<()> {
         if self.max_disk_usage.is_some() || self.max_disk_usage_percentage.is_some() {
-            return Err(Error::Other(
-                "unable to check disk usage on this platform",
-                format!("os:{OS}"),
-            ));
+            return Err(Error::Other {
+                context: "unable to check disk usage on this platform",
+                detail: format!("os:{OS}"),
+            });
         }
         Ok(())
     }
@@ -338,19 +371,16 @@ impl<'a, 'b> Snapshot<'a, 'b> {
             Image::<File, File>::new(self.version, Path::new("/proc/kcore"), self.destination)?;
         self.check_disk_usage(&image)?;
 
-        let file =
-            elf::ElfStream::<NativeEndian, _>::open_stream(&mut image.src).map_err(Error::Elf)?;
+        let file = elf::ElfStream::<NativeEndian, _>::open_stream(&mut image.src)?;
         let physical_ranges = Self::physical_ranges_from_segments(file.segments());
 
         if physical_ranges.is_empty() {
-            return Err(Error::UnableToCreateSnapshot(
-                "no usable PT_LOAD segments in /proc/kcore".to_string(),
+            return Err(Error::KcoreParse(
+                "no usable PT_LOAD segments in /proc/kcore",
             ));
         }
         if self.memory_ranges.is_empty() {
-            return Err(Error::UnableToCreateSnapshot(
-                "no initial memory range".to_string(),
-            ));
+            return Err(Error::KcoreParse("no initial memory range"));
         }
 
         let blocks = Self::find_kcore_blocks(&self.memory_ranges, &physical_ranges);

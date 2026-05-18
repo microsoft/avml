@@ -23,8 +23,12 @@ pub enum Error {
     #[error("unable to upload file to Azure Storage")]
     Blob(#[from] crate::upload::blobstore::Error),
 
-    #[error("io error: {0}")]
-    Io(#[source] IoError, &'static str),
+    #[error("io error: {context}")]
+    Io {
+        context: &'static str,
+        #[source]
+        source: IoError,
+    },
 
     #[error("no conversion required")]
     NoConversionRequired,
@@ -33,16 +37,17 @@ pub enum Error {
 pub(crate) fn format_error(e: &impl StdError, f: &mut Formatter) -> FmtResult {
     write!(f, "error: {e}")?;
 
-    let mut source = e.source();
+    let Some(first) = e.source() else {
+        return Ok(());
+    };
 
-    if e.source().is_some() {
-        writeln!(f, "\ncaused by:")?;
-        let mut i: usize = 0;
-        while let Some(inner) = source {
-            writeln!(f, "{i: >5}: {inner}")?;
-            source = inner.source();
-            i = i.saturating_add(1);
-        }
+    writeln!(f, "\ncaused by:")?;
+    let mut source: Option<&dyn StdError> = Some(first);
+    let mut i: usize = 0;
+    while let Some(inner) = source {
+        writeln!(f, "{i: >5}: {inner}")?;
+        source = inner.source();
+        i = i.saturating_add(1);
     }
 
     Ok(())
