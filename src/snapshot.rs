@@ -138,6 +138,15 @@ impl FmtDisplay for Source {
             Self::DevCrash => write!(f, "/dev/crash"),
             Self::DevMem => write!(f, "/dev/mem"),
             Self::ProcKcore => write!(f, "/proc/kcore"),
+            // Deliberately use Debug formatting rather than `path.display()`:
+            // this value is embedded in error messages that may be logged or
+            // shown in CI annotations. Debug quotes and escapes control
+            // characters, ANSI sequences, and embedded newlines; Display via
+            // `path.display()` would let them through verbatim.
+            #[expect(
+                clippy::unnecessary_debug_formatting,
+                reason = "escaping is the point — see comment above"
+            )]
             Self::Raw(ref path) => write!(f, "{path:?}"),
         }
     }
