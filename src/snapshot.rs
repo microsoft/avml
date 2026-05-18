@@ -25,7 +25,7 @@ use std::{
 #[derive(thiserror::Error)]
 pub enum Error {
     #[error("unable to parse elf structures: {0}")]
-    Elf(elf::ParseError),
+    Elf(#[from] elf::ParseError),
 
     #[error("locked down /proc/kcore")]
     LockedDownKcore,
@@ -339,8 +339,7 @@ impl<'a, 'b> Snapshot<'a, 'b> {
             Image::<File, File>::new(self.version, Path::new("/proc/kcore"), self.destination)?;
         self.check_disk_usage(&image)?;
 
-        let file =
-            elf::ElfStream::<NativeEndian, _>::open_stream(&mut image.src).map_err(Error::Elf)?;
+        let file = elf::ElfStream::<NativeEndian, _>::open_stream(&mut image.src)?;
         let mut segments: Vec<&ProgramHeader> = file
             .segments()
             .iter()
