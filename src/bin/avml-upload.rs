@@ -1,11 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-use avml::{BlobUploader, Error, Result, put};
+use avml::{BlobUploader, Result, put};
 use clap::{Parser, Subcommand};
 use core::num::{NonZeroU64, NonZeroUsize};
 use std::path::PathBuf;
-use tokio::runtime::Runtime;
 use url::Url;
 
 #[derive(Parser)]
@@ -42,7 +41,9 @@ enum Commands {
     },
 }
 
-async fn run(cmd: Cmd) -> Result<()> {
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<()> {
+    let cmd = Cmd::parse();
     match cmd.command {
         Commands::Put { filename, url } => put(&filename, &url).await?,
         Commands::UploadBlob {
@@ -57,16 +58,5 @@ async fn run(cmd: Cmd) -> Result<()> {
             uploader.upload_file(&filename).await?;
         }
     }
-    Ok(())
-}
-
-fn main() -> Result<()> {
-    let cmd = Cmd::parse();
-    Runtime::new()
-        .map_err(|source| Error::Io {
-            context: "tokio runtime error",
-            source,
-        })?
-        .block_on(run(cmd))?;
     Ok(())
 }
