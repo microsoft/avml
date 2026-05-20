@@ -163,11 +163,6 @@ fn disk_usage(path: &Path) -> Result<DiskUsage> {
 
 #[cfg(test)]
 mod tests {
-    #![expect(
-        clippy::assertions_on_result_states,
-        reason = "tests intentionally assert on Result variants via is_err()"
-    )]
-
     use super::*;
 
     const EXCESSIVE_VALUE_F64: f64 = 4_000_000_000_000_000_000.0;
@@ -202,7 +197,13 @@ mod tests {
         assert_eq!(f64_to_u64(f64::MAX - 1.0)?, u64::MAX);
 
         f64_to_u64(0.0)?;
-        assert!(f64_to_u64(-0.1).is_err());
+        assert!(matches!(
+            f64_to_u64(-0.1),
+            Err(Error::Other {
+                context: "unable to convert f64 to u64",
+                ..
+            })
+        ));
         assert_eq!(f64_to_u64(EXCESSIVE_VALUE_F64)?, EXCESSIVE_VALUE);
 
         // note: testing equality of floating point values is tricky.
@@ -231,7 +232,10 @@ mod tests {
         })?;
         check_max_usage(1, ten)?;
         check_max_usage(10, ten)?;
-        assert!(check_max_usage(11 * 1024 * 1024, ten).is_err());
+        assert!(matches!(
+            check_max_usage(11 * 1024 * 1024, ten),
+            Err(Error::DiskUsageEstimateExceeded { .. })
+        ));
         Ok(())
     }
 
@@ -263,17 +267,17 @@ mod tests {
         )?;
 
         // disk is already past the max allowed, should fail even with a tiny addition
-        assert!(
+        assert!(matches!(
             check_max_usage_percentage(
                 1,
                 &DiskUsage {
                     total: 1000,
-                    used: 910
+                    used: 910,
                 },
-                10.0
-            )
-            .is_err()
-        );
+                10.0,
+            ),
+            Err(Error::DiskUsageEstimateExceeded { .. })
+        ));
 
         Ok(())
     }
