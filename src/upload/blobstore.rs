@@ -101,11 +101,20 @@ fn calc_block_size(file_size: NonZeroU64, block_size: Option<NonZeroU64>) -> Res
     ))
 }
 
+/// Computed Azure Blob upload parameters: block partitioning and worker
+/// concurrency derived from file size, caller hints, and the
+/// `MEMORY_THRESHOLD` / `MAX_CONCURRENCY` caps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct UploadPlan {
+    block_size: NonZeroU64,
+    concurrency: NonZeroUsize,
+}
+
 fn calc_concurrency(
     file_size: NonZeroU64,
     block_size: Option<NonZeroU64>,
     upload_concurrency: Option<NonZeroUsize>,
-) -> Result<(NonZeroU64, NonZeroUsize)> {
+) -> Result<UploadPlan> {
     if file_size > BLOB_MAX_FILE_SIZE {
         return Err(Error::TooLarge);
     }
@@ -121,7 +130,7 @@ fn calc_concurrency(
         .unwrap_or(usize::MAX),
     )
     .unwrap_or(NonZeroUsize::MIN);
-    let upload_concurrency = cmp::min(
+    let concurrency = cmp::min(
         cmp::min(
             upload_concurrency.unwrap_or(DEFAULT_CONCURRENCY),
             memory_limited_concurrency,
@@ -129,14 +138,17 @@ fn calc_concurrency(
         MAX_CONCURRENCY,
     );
 
-    Ok((block_size, upload_concurrency))
+    Ok(UploadPlan {
+        block_size,
+        concurrency,
+    })
 }
 
 fn upload_parameters(
     file_size: NonZeroU64,
     block_size: Option<NonZeroU64>,
     upload_concurrency: Option<NonZeroUsize>,
-) -> Result<(NonZeroU64, NonZeroUsize)> {
+) -> Result<UploadPlan> {
     let block_size = block_size.map(|x| x.saturating_mul(ONE_MB_NZ));
     calc_concurrency(file_size, block_size, upload_concurrency)
 }
@@ -280,11 +292,10 @@ impl BlobUploader {
         let content: RequestContent<Bytes, NoFormat> = Body::from(stream).into();
 
         let options = if let Some(file_size) = NonZeroU64::new(file_size) {
-            let (block_size, uploaders_count) =
-                upload_parameters(file_size, self.block_size, self.concurrency)?;
+            let plan = upload_parameters(file_size, self.block_size, self.concurrency)?;
             BlobClientUploadOptions {
-                parallel: Some(uploaders_count),
-                partition_size: Some(block_size),
+                parallel: Some(plan.concurrency),
+                partition_size: Some(plan.block_size),
                 ..Default::default()
             }
         } else {
@@ -327,33 +338,41 @@ mod tests {
 
     #[test]
     fn small_files_use_minimum_block_size_and_default_concurrency() -> Result<()> {
-        let (block_size, concurrency) = upload_parameters(bytes_from_mib(400)?, None, None)?;
-
-        assert_eq!(block_size, BLOB_MIN_BLOCK_SIZE);
-        assert_eq!(concurrency, DEFAULT_CONCURRENCY);
+        assert_eq!(
+            upload_parameters(bytes_from_mib(400)?, None, None)?,
+            UploadPlan {
+                block_size: BLOB_MIN_BLOCK_SIZE,
+                concurrency: DEFAULT_CONCURRENCY,
+            },
+        );
         Ok(())
     }
 
     #[test]
     fn user_block_size_is_clamped_to_minimum() -> Result<()> {
-        let (block_size, concurrency) =
-            upload_parameters(bytes_from_mib(300)?, Some(NonZeroU64::MIN), None)?;
-
-        assert_eq!(block_size, BLOB_MIN_BLOCK_SIZE);
-        assert_eq!(concurrency, DEFAULT_CONCURRENCY);
+        assert_eq!(
+            upload_parameters(bytes_from_mib(300)?, Some(NonZeroU64::MIN), None)?,
+            UploadPlan {
+                block_size: BLOB_MIN_BLOCK_SIZE,
+                concurrency: DEFAULT_CONCURRENCY,
+            },
+        );
         Ok(())
     }
 
     #[test]
     fn requested_concurrency_caps_memory_limited_uploaders() -> Result<()> {
-        let (block_size, concurrency) = upload_parameters(
-            bytes_from_gib(30)?,
-            Some(non_zero(100)?),
-            Some(non_zero_usize(3)?),
-        )?;
-
-        assert_eq!(block_size, bytes_from_mib(100)?);
-        assert_eq!(concurrency, non_zero_usize(3)?);
+        assert_eq!(
+            upload_parameters(
+                bytes_from_gib(30)?,
+                Some(non_zero(100)?),
+                Some(non_zero_usize(3)?),
+            )?,
+            UploadPlan {
+                block_size: bytes_from_mib(100)?,
+                concurrency: non_zero_usize(3)?,
+            },
+        );
         Ok(())
     }
 
@@ -369,20 +388,25 @@ mod tests {
                 .ok_or(Error::TooLarge)?,
         )?;
         let expected_block_size = non_zero(file_size.get().div_ceil(max_blocks))?;
-        let (block_size, concurrency) = upload_parameters(file_size, None, None)?;
-
-        assert_eq!(block_size, expected_block_size);
-        assert_eq!(concurrency, DEFAULT_CONCURRENCY);
+        assert_eq!(
+            upload_parameters(file_size, None, None)?,
+            UploadPlan {
+                block_size: expected_block_size,
+                concurrency: DEFAULT_CONCURRENCY,
+            },
+        );
         Ok(())
     }
 
     #[test]
     fn huge_blocks_still_use_at_least_one_uploader() -> Result<()> {
-        let (block_size, concurrency) =
-            upload_parameters(bytes_from_gib(30)?, Some(non_zero(600)?), None)?;
-
-        assert_eq!(block_size, bytes_from_mib(600)?);
-        assert_eq!(concurrency, NonZeroUsize::MIN);
+        assert_eq!(
+            upload_parameters(bytes_from_gib(30)?, Some(non_zero(600)?), None)?,
+            UploadPlan {
+                block_size: bytes_from_mib(600)?,
+                concurrency: NonZeroUsize::MIN,
+            },
+        );
         Ok(())
     }
 
