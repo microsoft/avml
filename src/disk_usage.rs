@@ -138,7 +138,9 @@ fn disk_usage(path: &Path) -> Result<DiskUsage> {
         return Err(Error::Disk(std::io::Error::last_os_error()));
     }
 
-    let f_bsize: u64 = statfs.f_bsize.try_into().map_err(Error::BlockSize)?;
+    let raw_bsize = i128::from(statfs.f_bsize);
+    let f_bsize: u64 =
+        u64::try_from(raw_bsize).map_err(|_| Error::BlockSize { value: raw_bsize })?;
 
     let total = statfs.f_blocks.saturating_mul(f_bsize);
     let free = statfs.f_bavail.saturating_mul(f_bsize);

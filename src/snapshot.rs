@@ -70,8 +70,8 @@ pub enum Error {
     #[error("snapshot destination path contains a NUL byte")]
     PathContainsNul(#[from] std::ffi::NulError),
 
-    #[error("filesystem block size does not fit in a u64")]
-    BlockSize(#[source] core::num::TryFromIntError),
+    #[error("filesystem block size {value} does not fit in a u64")]
+    BlockSize { value: i128 },
 
     #[error("operation not supported on this platform: {os}")]
     UnsupportedPlatform { os: &'static str },
