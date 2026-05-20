@@ -63,23 +63,26 @@ const BLOB_MAX_FILE_SIZE: NonZeroU64 = BLOB_MAX_BLOCKS.saturating_mul(BLOB_MAX_B
 const BLOB_MIN_BLOCK_SIZE: NonZeroU64 = ONE_MB_NZ
     .saturating_mul(NonZeroU64::new(5).expect("blob min block size multiplier must be non-zero"));
 
-/// Azure's default max request rate for a storage account is 20,000 per second.
-/// By keeping to 10 or fewer concurrent upload threads, AVML can be used to
-/// simultaneously upload images from 1000 different hosts concurrently (a full
-/// VM scaleset) to a single default storage account.
+/// Hard cap on concurrent upload tasks, applied after any caller-supplied or
+/// memory-derived value. Azure's default max request rate for a storage
+/// account is 20,000/sec; capping at 10 concurrent uploaders per host lets
+/// 1000 hosts (a full VM scaleset) target a single default storage account
+/// simultaneously without tripping throttling.
 ///
 /// <https://docs.microsoft.com/en-us/azure/storage/common/scalability-targets-standard-account#scale-targets-for-standard-storage-accounts>
 const MAX_CONCURRENCY: NonZeroUsize =
     NonZeroUsize::new(10).expect("max concurrency must be non-zero");
 
-/// Azure's default max request rate for a storage account is 20,000 per second.
-/// By keeping to 10 or fewer concurrent upload threads, AVML can be used to
-/// simultaneously upload images from 1000 different hosts concurrently (a full
-/// VM scaleset) to a single default storage account.
-///
-/// <https://docs.microsoft.com/en-us/azure/storage/common/scalability-targets-standard-account#scale-targets-for-standard-storage-accounts>
+/// Default concurrent upload tasks when the caller does not specify one.
+/// Currently matches [`MAX_CONCURRENCY`] so the out-of-the-box behavior is
+/// also the per-host cap; see that constant for the scaleset rationale.
 pub const DEFAULT_CONCURRENCY: NonZeroUsize =
     NonZeroUsize::new(10).expect("default concurrency must be non-zero");
+
+const _: () = assert!(
+    DEFAULT_CONCURRENCY.get() <= MAX_CONCURRENCY.get(),
+    "DEFAULT_CONCURRENCY must not exceed MAX_CONCURRENCY",
+);
 
 /// Keep at most 500MB of block data in flight across all uploaders.
 const MEMORY_THRESHOLD: NonZeroU64 = ONE_MB_NZ
