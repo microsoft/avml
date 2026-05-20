@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-use avml::{Error, ONE_MB, Result, image};
+use avml::{Error, Format, ONE_MB, Result, image};
 use clap::{Parser, ValueEnum};
 use snap::read::FrameDecoder;
 use std::{
@@ -10,23 +10,22 @@ use std::{
     path::{Path, PathBuf},
 };
 
-fn convert(src: &Path, dst: &Path, compress: bool) -> Result<()> {
+fn convert(src: &Path, dst: &Path, format: Format) -> Result<()> {
     let src_len = metadata(src)
         .map_err(|source| image::Error::Io {
             context: "unable to read source size",
             source,
         })?
         .len();
-    let mut image = image::Image::<File, File>::new(1, src, dst)?;
-    convert_image(&mut image, src_len, compress)
+    let mut image = image::Image::<File, File>::new(format, src, dst)?;
+    convert_image(&mut image, src_len)
 }
 
-fn convert_image<R, W>(image: &mut image::Image<R, W>, src_len: u64, compress: bool) -> Result<()>
+fn convert_image<R, W>(image: &mut image::Image<R, W>, src_len: u64) -> Result<()>
 where
     R: Read + Seek,
     W: Write,
 {
-    image.version = if compress { 2 } else { 1 };
     loop {
         let current = image
             .src
@@ -50,7 +49,6 @@ where
     R: Read + Seek,
     W: Write + Seek,
 {
-    image.version = 1;
     loop {
         let current = image
             .src
@@ -98,8 +96,8 @@ where
 
         let size = header.size()?;
 
-        match header.version {
-            1 => {
+        match header.format {
+            Format::Lime => {
                 let mut handle =
                     (&mut image.src).take(size.try_into().map_err(image::Error::IntConversion)?);
                 copy(&mut handle, &mut image.dst).map_err(|source| image::Error::Io {
@@ -107,7 +105,7 @@ where
                     source,
                 })?;
             }
-            2 => {
+            Format::AvmlCompressed => {
                 let mut decoder = FrameDecoder::new(&mut image.src)
                     .take(size.try_into().map_err(image::Error::IntConversion)?);
                 copy(&mut decoder, &mut image.dst).map_err(|source| image::Error::Io {
@@ -122,7 +120,6 @@ where
                         source,
                     })?;
             }
-            _ => return Err(image::Error::UnimplementedVersion.into()),
         }
     }
 
@@ -136,21 +133,15 @@ fn convert_to_raw(src: &Path, dst: &Path) -> Result<()> {
             source,
         })?
         .len();
-    let mut image = image::Image::<File, File>::new(1, src, dst)?;
+    let mut image = image::Image::<File, File>::new(Format::Lime, src, dst)?;
     convert_to_raw_image(&mut image, src_len)
 }
 
-fn encode_raw_image<R, W>(
-    image: &mut image::Image<R, W>,
-    raw_len: u64,
-    compress: bool,
-) -> Result<()>
+fn encode_raw_image<R, W>(image: &mut image::Image<R, W>, raw_len: u64) -> Result<()>
 where
     R: Read + Seek,
     W: Write,
 {
-    image.version = if compress { 2 } else { 1 };
-
     let mut start = 0_u64;
     while start < raw_len {
         let end = raw_len.min(start.saturating_add(image::MAX_BLOCK_SIZE));
@@ -161,15 +152,15 @@ where
     Ok(())
 }
 
-fn convert_from_raw(src: &Path, dst: &Path, compress: bool) -> Result<()> {
+fn convert_from_raw(src: &Path, dst: &Path, format: Format) -> Result<()> {
     let src_len = metadata(src)
         .map_err(|source| image::Error::Io {
             context: "unable to read source size",
             source,
         })?
         .len();
-    let mut image = image::Image::<File, File>::new(1, src, dst)?;
-    encode_raw_image(&mut image, src_len, compress)
+    let mut image = image::Image::<File, File>::new(format, src, dst)?;
+    encode_raw_image(&mut image, src_len)
 }
 
 #[derive(Parser)]
@@ -177,12 +168,12 @@ fn convert_from_raw(src: &Path, dst: &Path, compress: bool) -> Result<()> {
 #[command(version)]
 struct Config {
     /// specify output format
-    #[arg(long, value_enum, default_value_t = Format::LimeCompressed)]
-    source_format: Format,
+    #[arg(long, value_enum, default_value_t = CliFormat::LimeCompressed)]
+    source_format: CliFormat,
 
     /// specify output format
-    #[arg(long, value_enum, default_value_t = Format::Lime)]
-    format: Format,
+    #[arg(long, value_enum, default_value_t = CliFormat::Lime)]
+    format: CliFormat,
 
     /// name of the source file to read to on local system
     src: PathBuf,
@@ -191,8 +182,8 @@ struct Config {
     dst: PathBuf,
 }
 
-#[derive(ValueEnum, Clone)]
-enum Format {
+#[derive(ValueEnum, Clone, Copy, PartialEq, Eq)]
+enum CliFormat {
     Raw,
     Lime,
     #[value(rename_all = "snake_case")]
@@ -203,33 +194,36 @@ fn main() -> Result<()> {
     let config = Config::parse();
 
     match (config.source_format, config.format) {
-        (Format::Lime | Format::LimeCompressed, Format::Raw) => {
+        (CliFormat::Lime | CliFormat::LimeCompressed, CliFormat::Raw) => {
             convert_to_raw(&config.src, &config.dst)
         }
-        (Format::Lime, Format::LimeCompressed) => convert(&config.src, &config.dst, true),
-        (Format::LimeCompressed, Format::Lime) => convert(&config.src, &config.dst, false),
-        (Format::Raw, Format::Lime) => convert_from_raw(&config.src, &config.dst, false),
-        (Format::Raw, Format::LimeCompressed) => convert_from_raw(&config.src, &config.dst, true),
-        (Format::Lime, Format::Lime)
-        | (Format::LimeCompressed, Format::LimeCompressed)
-        | (Format::Raw, Format::Raw) => Err(Error::NoConversionRequired),
+        (CliFormat::Lime, CliFormat::LimeCompressed) => {
+            convert(&config.src, &config.dst, Format::AvmlCompressed)
+        }
+        (CliFormat::LimeCompressed, CliFormat::Lime) => {
+            convert(&config.src, &config.dst, Format::Lime)
+        }
+        (CliFormat::Raw, CliFormat::Lime) => {
+            convert_from_raw(&config.src, &config.dst, Format::Lime)
+        }
+        (CliFormat::Raw, CliFormat::LimeCompressed) => {
+            convert_from_raw(&config.src, &config.dst, Format::AvmlCompressed)
+        }
+        (CliFormat::Lime, CliFormat::Lime)
+        | (CliFormat::LimeCompressed, CliFormat::LimeCompressed)
+        | (CliFormat::Raw, CliFormat::Raw) => Err(Error::NoConversionRequired),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{convert_image, convert_to_raw_image, encode_raw_image};
-    use avml::{Result, image};
+    use avml::{Format, Result, image};
     use rand::{Rng as _, SeedableRng as _, rngs::SmallRng};
     use std::io::Cursor;
 
-    fn memory_image(src: &[u8]) -> image::Image<Cursor<&[u8]>, Cursor<Vec<u8>>> {
-        image::Image {
-            version: 1,
-            align_src: false,
-            src: Cursor::new(src),
-            dst: Cursor::new(Vec::new()),
-        }
+    fn memory_image(format: Format, src: &[u8]) -> image::Image<Cursor<&[u8]>, Cursor<Vec<u8>>> {
+        image::Image::from_streams(format, Cursor::new(src), Cursor::new(Vec::new()))
     }
 
     fn block_size() -> Result<usize> {
@@ -265,43 +259,43 @@ mod tests {
         Ok(chunks.concat())
     }
 
-    fn encode_raw(raw: &[u8], version: u32) -> Result<Vec<u8>> {
-        let mut image = memory_image(raw);
+    fn encode_raw(raw: &[u8], format: Format) -> Result<Vec<u8>> {
+        let mut image = memory_image(format, raw);
         let total = u64::try_from(raw.len()).map_err(image::Error::IntConversion)?;
-        encode_raw_image(&mut image, total, version == 2)?;
+        encode_raw_image(&mut image, total)?;
         Ok(image.dst.into_inner())
     }
 
-    fn convert_encoded(encoded: &[u8], compress: bool) -> Result<Vec<u8>> {
+    fn convert_encoded(encoded: &[u8], format: Format) -> Result<Vec<u8>> {
         let encoded_len = u64::try_from(encoded.len()).map_err(image::Error::IntConversion)?;
-        let mut image = memory_image(encoded);
-        convert_image(&mut image, encoded_len, compress)?;
+        let mut image = memory_image(format, encoded);
+        convert_image(&mut image, encoded_len)?;
         Ok(image.dst.into_inner())
     }
 
     fn decode_to_raw(encoded: &[u8]) -> Result<Vec<u8>> {
         let encoded_len = u64::try_from(encoded.len()).map_err(image::Error::IntConversion)?;
-        let mut image = memory_image(encoded);
+        let mut image = memory_image(Format::Lime, encoded);
         convert_to_raw_image(&mut image, encoded_len)?;
         Ok(image.dst.into_inner())
     }
 
-    fn header_version(encoded: &[u8]) -> Result<u32> {
-        Ok(image::Header::read(Cursor::new(encoded))?.version)
+    fn header_format(encoded: &[u8]) -> Result<Format> {
+        Ok(image::Header::read(Cursor::new(encoded))?.format)
     }
 
     #[test]
     fn convert_sparse_raw_between_lime_and_compressed_formats() -> Result<()> {
         let raw = build_sparse_raw()?;
-        let lime = encode_raw(&raw, 1)?;
-        assert_eq!(header_version(&lime)?, 1);
+        let lime = encode_raw(&raw, Format::Lime)?;
+        assert_eq!(header_format(&lime)?, Format::Lime);
         assert_eq!(decode_to_raw(&lime)?, raw);
 
-        let compressed = convert_encoded(&lime, true)?;
-        assert_eq!(header_version(&compressed)?, 2);
+        let compressed = convert_encoded(&lime, Format::AvmlCompressed)?;
+        assert_eq!(header_format(&compressed)?, Format::AvmlCompressed);
 
-        let lime_roundtrip = convert_encoded(&compressed, false)?;
-        assert_eq!(header_version(&lime_roundtrip)?, 1);
+        let lime_roundtrip = convert_encoded(&compressed, Format::Lime)?;
+        assert_eq!(header_format(&lime_roundtrip)?, Format::Lime);
         assert_eq!(lime_roundtrip, lime);
 
         assert_eq!(decode_to_raw(&compressed)?, raw);
@@ -317,11 +311,11 @@ mod tests {
         let block_size = block_size()?;
         raw.extend(vec![0; block_size]);
 
-        let lime = encode_raw(&raw, 1)?;
+        let lime = encode_raw(&raw, Format::Lime)?;
         assert_eq!(decode_to_raw(&lime)?, expected_raw);
 
-        let compressed = convert_encoded(&lime, true)?;
-        let lime_roundtrip = convert_encoded(&compressed, false)?;
+        let compressed = convert_encoded(&lime, Format::AvmlCompressed)?;
+        let lime_roundtrip = convert_encoded(&compressed, Format::Lime)?;
         assert_eq!(lime_roundtrip, lime);
         assert_eq!(decode_to_raw(&compressed)?, expected_raw);
         assert_eq!(decode_to_raw(&lime_roundtrip)?, expected_raw);
