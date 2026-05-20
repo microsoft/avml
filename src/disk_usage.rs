@@ -90,10 +90,7 @@ fn check_max_usage_percentage(
 )]
 fn u64_to_f64(value: u64) -> Result<f64> {
     if value > EXCESSIVE_VALUE {
-        return Err(Error::Other {
-            context: "unable to convert u64 to f64",
-            detail: format!("value is too large to convert to f64: {value}"),
-        });
+        return Err(Error::F64Conversion { value });
     }
     Ok(value as f64)
 }
@@ -112,10 +109,7 @@ fn u64_to_f64(value: u64) -> Result<f64> {
 )]
 fn f64_to_u64(value: f64) -> Result<u64> {
     if !value.is_sign_positive() {
-        return Err(Error::Other {
-            context: "unable to convert f64 to u64",
-            detail: format!("value is not a positive f64: {value}"),
-        });
+        return Err(Error::U64Conversion { value });
     }
     Ok(value.trunc() as u64)
 }
@@ -133,10 +127,7 @@ fn estimate(ranges: &[Range<u64>]) -> u64 {
 }
 
 fn disk_usage(path: &Path) -> Result<DiskUsage> {
-    let path_as_cstr = CString::new(path.as_os_str().as_bytes()).map_err(|e| Error::Other {
-        context: "unable to convert path to CString",
-        detail: e.to_string(),
-    })?;
+    let path_as_cstr = CString::new(path.as_os_str().as_bytes())?;
 
     // SAFETY: this is the only way to initialize the statfs64 struct
     let mut statfs: libc::statfs64 = unsafe { zeroed() };
@@ -147,10 +138,9 @@ fn disk_usage(path: &Path) -> Result<DiskUsage> {
         return Err(Error::Disk(std::io::Error::last_os_error()));
     }
 
-    let f_bsize: u64 = statfs.f_bsize.try_into().map_err(|e| Error::Other {
-        context: "unable to identify block size",
-        detail: format!("{e}"),
-    })?;
+    let raw_bsize = i128::from(statfs.f_bsize);
+    let f_bsize: u64 =
+        u64::try_from(raw_bsize).map_err(|_| Error::BlockSize { value: raw_bsize })?;
 
     let total = statfs.f_blocks.saturating_mul(f_bsize);
     let free = statfs.f_bavail.saturating_mul(f_bsize);
@@ -169,18 +159,18 @@ mod tests {
     )]
 
     use super::*;
+    use std::path::PathBuf;
 
     const EXCESSIVE_VALUE_F64: f64 = 4_000_000_000_000_000_000.0;
+    const TEN: NonZeroU64 = NonZeroU64::new(10).expect("10 is non-zero");
 
     #[test]
     fn test_disk_usage() -> Result<()> {
-        let current_exe = std::env::current_exe().map_err(|e| Error::Other {
-            context: "unable to get current exe",
-            detail: e.to_string(),
-        })?;
-        // check that we can get disk usage for at least one file system, here
-        // we check file system that the current exe resides on
-        let result = disk_usage(&current_exe)?;
+        // Use the crate's source directory; per the testing convention,
+        // CARGO_MANIFEST_DIR is a stable fixture path that doesn't depend
+        // on the test binary's location.
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let result = disk_usage(&path)?;
 
         // We can't really test this, but we can at least make sure it's not zero
         assert!(result.total > 0);
@@ -225,13 +215,9 @@ mod tests {
 
     #[test]
     fn test_check_max_usable() -> Result<()> {
-        let ten = NonZeroU64::new(10).ok_or(Error::Other {
-            context: "unable to create NonZeroU64",
-            detail: String::new(),
-        })?;
-        check_max_usage(1, ten)?;
-        check_max_usage(10, ten)?;
-        assert!(check_max_usage(11 * 1024 * 1024, ten).is_err());
+        check_max_usage(1, TEN)?;
+        check_max_usage(10, TEN)?;
+        assert!(check_max_usage(11 * 1024 * 1024, TEN).is_err());
         Ok(())
     }
 
