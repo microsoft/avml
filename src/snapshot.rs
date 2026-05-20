@@ -38,8 +38,12 @@ pub enum Error {
     #[error("unable to create memory snapshot")]
     UnableToCreateMemorySnapshot(#[from] crate::image::Error),
 
-    #[error("unable to create memory snapshot from source: {1}")]
-    UnableToCreateSnapshotFromSource(#[source] Box<Error>, Source),
+    #[error("unable to create memory snapshot from source: {src}")]
+    UnableToCreateSnapshotFromSource {
+        src: Source,
+        #[source]
+        source: Box<Error>,
+    },
 
     #[error("no memory source available")]
     NoSourceAvailable,
@@ -99,7 +103,7 @@ impl Error {
     fn is_disk_usage_exceeded(&self) -> bool {
         matches!(
             self,
-            Error::UnableToCreateSnapshotFromSource(inner, _)
+            Error::UnableToCreateSnapshotFromSource { source: inner, .. }
                 if matches!(**inner, Error::DiskUsageEstimateExceeded { .. })
         )
     }
@@ -147,7 +151,16 @@ impl FmtDisplay for Source {
             Self::DevCrash => write!(f, "/dev/crash"),
             Self::DevMem => write!(f, "/dev/mem"),
             Self::ProcKcore => write!(f, "/proc/kcore"),
-            Self::Raw(ref path) => write!(f, "{}", path.display()),
+            // Deliberately use Debug formatting rather than `path.display()`:
+            // this value is embedded in error messages that may be logged or
+            // shown in CI annotations. Debug quotes and escapes control
+            // characters, ANSI sequences, and embedded newlines; Display via
+            // `path.display()` would let them through verbatim.
+            #[expect(
+                clippy::unnecessary_debug_formatting,
+                reason = "escaping is the point — see comment above"
+            )]
+            Self::Raw(ref path) => write!(f, "{path:?}"),
         }
     }
 }
@@ -237,7 +250,10 @@ impl<'a, 'b> Snapshot<'a, 'b> {
             Source::DevMem => self.phys(Path::new("/dev/mem")),
             Source::Raw(ref s) => self.phys(s),
         }
-        .map_err(|e| Error::UnableToCreateSnapshotFromSource(Box::new(e), src.clone()))
+        .map_err(|e| Error::UnableToCreateSnapshotFromSource {
+            src: src.clone(),
+            source: Box::new(e),
+        })
     }
 
     /// Create a memory snapshot
