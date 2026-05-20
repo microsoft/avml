@@ -41,6 +41,7 @@ url = {version="2.5", optional=true, default-features=false}
 [dev-dependencies]
 insta = {version="1.47", features=["json"]}
 rand = {version="0.10", default-features=false, features=["std_rng"]}
+tempfile = "3"
 
 [lints.clippy]
 arithmetic_side_effects = "warn"

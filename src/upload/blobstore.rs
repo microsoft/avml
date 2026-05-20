@@ -304,7 +304,6 @@ mod tests {
     use super::*;
     use crate::ONE_MB;
     use futures::AsyncReadExt as _;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn non_zero(value: u64) -> Result<NonZeroU64> {
         NonZeroU64::new(value).ok_or(Error::TooLarge)
@@ -405,39 +404,27 @@ mod tests {
 
     #[tokio::test]
     async fn test_progress_stream_reset() -> Result<()> {
-        let path = std::env::temp_dir().join(format!(
-            "avml-blob-upload-{}-{}.bin",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos()
-        ));
+        let dir = tempfile::TempDir::new()?;
+        let path = dir.path().join("blob-upload.bin");
         let expected = b"seekable stream content";
         tokio::fs::write(&path, expected).await?;
 
-        let result = async {
-            let file = File::open(&path).await?;
-            let file_size = file.metadata().await?.len();
-            let mut stream = ProgressStream::new(file, file_size).await?;
+        let file = File::open(&path).await?;
+        let file_size = file.metadata().await?.len();
+        let mut stream = ProgressStream::new(file, file_size).await?;
 
-            assert_eq!(stream.len(), Some(u64::try_from(expected.len())?));
+        assert_eq!(stream.len(), Some(u64::try_from(expected.len())?));
 
-            let mut prefix = [0_u8; 8];
-            stream.read_exact(&mut prefix).await?;
-            assert_eq!(&prefix, b"seekable");
+        let mut prefix = [0_u8; 8];
+        stream.read_exact(&mut prefix).await?;
+        assert_eq!(&prefix, b"seekable");
 
-            stream.reset().await?;
+        stream.reset().await?;
 
-            let mut reread = Vec::new();
-            stream.read_to_end(&mut reread).await?;
-            assert_eq!(reread, expected);
+        let mut reread = Vec::new();
+        stream.read_to_end(&mut reread).await?;
+        assert_eq!(reread, expected);
 
-            Result::<()>::Ok(())
-        }
-        .await;
-
-        let _ = tokio::fs::remove_file(&path).await;
-        result
+        Ok(())
     }
 }
