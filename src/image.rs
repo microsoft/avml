@@ -30,9 +30,6 @@ pub enum Error {
     #[error("file is too large")]
     TooLarge,
 
-    #[error("unimplemented version")]
-    UnimplementedVersion,
-
     #[error("unsupported format")]
     UnsupportedFormat,
 
@@ -49,6 +46,58 @@ pub enum Error {
 
 type Result<T> = core::result::Result<T, Error>;
 
+/// On-disk format for a memory snapshot.
+///
+/// The wire encoding is unchanged across the two variants: a 32-bit
+/// little-endian magic followed by a 32-bit little-endian version. This
+/// enum exists so that internal code dispatches on a named format rather
+/// than passing around bare integers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Format {
+    /// `LiME` v1: uncompressed memory blocks with `LiME` headers.
+    Lime,
+    /// AVML v2: Snappy-compressed memory blocks with AVML headers.
+    AvmlCompressed,
+}
+
+impl Format {
+    const LIME_MAGIC: u32 = 0x4c69_4d45; // "LiME"
+    const AVML_MAGIC: u32 = 0x4c4d_5641; // "AVML"
+
+    const fn magic(self) -> u32 {
+        match self {
+            Self::Lime => Self::LIME_MAGIC,
+            Self::AvmlCompressed => Self::AVML_MAGIC,
+        }
+    }
+
+    const fn version(self) -> u32 {
+        match self {
+            Self::Lime => 1,
+            Self::AvmlCompressed => 2,
+        }
+    }
+
+    fn from_wire(magic: u32, version: u32) -> Result<Self> {
+        match (magic, version) {
+            (Self::LIME_MAGIC, 1) => Ok(Self::Lime),
+            (Self::AVML_MAGIC, 2) => Ok(Self::AvmlCompressed),
+            _ => Err(Error::UnsupportedFormat),
+        }
+    }
+}
+
+impl From<bool> for Format {
+    /// `true` selects the compressed AVML format; `false` selects `LiME`.
+    fn from(compress: bool) -> Self {
+        if compress {
+            Self::AvmlCompressed
+        } else {
+            Self::Lime
+        }
+    }
+}
+
 /// Largest block AVML emits in a single header. Ranges larger than this
 /// are split into `MAX_BLOCK_SIZE`-sized chunks before being written.
 ///
@@ -60,13 +109,11 @@ type Result<T> = core::result::Result<T, Error>;
 pub const MAX_BLOCK_SIZE: u64 = 0x1000 * 0x1000;
 const PAGE_SIZE: usize = 0x1000;
 const HEADER_LEN: usize = 32;
-const LIME_MAGIC: u32 = 0x4c69_4d45; // EMiL as u32le
-const AVML_MAGIC: u32 = 0x4c4d_5641; // AVML as u32le
 
 #[derive(Debug, Clone)]
 pub struct Header {
     pub range: Range<u64>,
-    pub version: u32,
+    pub format: Format,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone)]
@@ -111,42 +158,36 @@ impl Header {
         if padding != 0 {
             return Err(Error::InvalidPadding);
         }
-        if !(magic == LIME_MAGIC && version == 1 || magic == AVML_MAGIC && version == 2) {
-            return Err(Error::UnsupportedFormat);
-        }
+        let format = Format::from_wire(magic, version)?;
 
         Ok(Self {
             range: Range { start, end },
-            version,
+            format,
         })
     }
 
-    fn encode(&self) -> Result<[u8; 32]> {
-        let magic = match self.version {
-            1 => LIME_MAGIC,
-            2 => AVML_MAGIC,
-            _ => return Err(Error::UnimplementedVersion),
-        };
+    fn encode(&self) -> [u8; HEADER_LEN] {
         let mut bytes = [0; HEADER_LEN];
-        LittleEndian::write_u32_into(&[magic, self.version], &mut bytes[..8]);
+        LittleEndian::write_u32_into(
+            &[self.format.magic(), self.format.version()],
+            &mut bytes[..8],
+        );
         LittleEndian::write_u64_into(
             &[self.range.start, self.range.end.saturating_sub(1), 0],
             &mut bytes[8..],
         );
-        Ok(bytes)
+        bytes
     }
 
     /// Writes the header to the destination writer.
     ///
     /// # Errors
-    /// Returns an error if:
-    /// - The version is not supported
-    /// - The header cannot be written to the destination
+    /// Returns an error if the header cannot be written to the destination.
     pub fn write<W>(&self, mut dst: W) -> Result<()>
     where
         W: Write,
     {
-        let bytes = self.encode()?;
+        let bytes = self.encode();
         dst.write_all(&bytes).map_err(|source| Error::Io {
             context: "unable to write header",
             source,
@@ -208,13 +249,29 @@ where
 }
 
 pub struct Image<R: Read + Seek, W: Write> {
-    pub version: u32,
-    pub align_src: bool,
+    pub(crate) format: Format,
+    pub(crate) align_src: bool,
     pub src: R,
     pub dst: W,
 }
 
 impl<R: Read + Seek, W: Write> Image<R, W> {
+    /// Build an `Image` over arbitrary streams.
+    pub fn from_streams(format: Format, src: R, dst: W) -> Self {
+        Self {
+            format,
+            align_src: false,
+            src,
+            dst,
+        }
+    }
+
+    /// The destination format this `Image` writes.
+    #[must_use]
+    pub fn format(&self) -> Format {
+        self.format
+    }
+
     #[cfg(target_family = "windows")]
     fn open_dst(path: &Path) -> Result<File> {
         OpenOptions::new()
@@ -243,14 +300,15 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
             })
     }
 
-    /// Creates a new Image with the specified version, source filename, and destination filename.
+    /// Open `src_filename` for reading and `dst_filename` for writing,
+    /// producing an `Image` that emits the given destination `format`.
     ///
     /// # Errors
     /// Returns an error if:
     /// - The source file cannot be opened for reading
     /// - The destination file cannot be created or opened for writing
     pub fn new(
-        version: u32,
+        format: Format,
         src_filename: &Path,
         dst_filename: &Path,
     ) -> Result<Image<File, File>> {
@@ -276,7 +334,7 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
         let dst = Self::open_dst(dst_filename)?;
 
         Ok(Image::<File, File> {
-            version,
+            format,
             align_src,
             src,
             dst,
@@ -318,7 +376,7 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
     fn write_header(&mut self, range: Range<u64>) -> Result<()> {
         Header {
             range,
-            version: self.version,
+            format: self.format,
         }
         .write(&mut self.dst)
     }
@@ -378,32 +436,35 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
         }
 
         self.write_header(range.clone())?;
-        if self.version == 1 {
-            self.dst.write_all(&buf).map_err(|source| Error::Io {
-                context: "unable to write non-zero block",
-                source,
-            })?;
-        } else {
-            let mut encoder = SnapCountWriter::new(&mut self.dst);
-            encoder.write_all(&buf).map_err(|source| Error::Io {
-                context: "unable to write compressed block",
-                source,
-            })?;
-            encoder.finalize().map_err(|source| Error::Io {
-                context: "unable to finalize compressed block",
-                source,
-            })?;
+        match self.format {
+            Format::Lime => {
+                self.dst.write_all(&buf).map_err(|source| Error::Io {
+                    context: "unable to write non-zero block",
+                    source,
+                })?;
+            }
+            Format::AvmlCompressed => {
+                let mut encoder = SnapCountWriter::new(&mut self.dst);
+                encoder.write_all(&buf).map_err(|source| Error::Io {
+                    context: "unable to write compressed block",
+                    source,
+                })?;
+                encoder.finalize().map_err(|source| Error::Io {
+                    context: "unable to finalize compressed block",
+                    source,
+                })?;
+            }
         }
         Ok(())
     }
 
     pub fn convert_block(&mut self) -> Result<()> {
         let header = self.read_header()?;
-        match header.version {
-            1 => {
+        match header.format {
+            Format::Lime => {
                 self.copy_block(header.range)?;
             }
-            2 => {
+            Format::AvmlCompressed => {
                 self.write_header(header.range.clone())?;
                 {
                     let size = range_len(header.range.clone());
@@ -420,7 +481,6 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
                         source,
                     })?;
             }
-            _ => return Err(Error::UnimplementedVersion),
         }
 
         Ok(())
@@ -437,48 +497,44 @@ fn range_usize(value: Range<u64>) -> Result<usize> {
 
 #[cfg(test)]
 mod tests {
+    use super::{Format, Header, Image};
     use core::ops::Range;
     use std::io::Cursor;
 
     #[test]
-    fn encode_header_v1() {
+    fn encode_header_lime() {
         let expected = b"\x45\x4d\x69\x4c\x01\x00\x00\x00\x00\x10\x00\x00\x00\x00\x00\x00\
                          \x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
-        let header = super::Header {
+        let header = Header {
             range: Range {
                 start: 0x1000,
                 end: 0x20001,
             },
-            version: 1,
+            format: Format::Lime,
         };
-        assert!(matches!(header.encode(), Ok(x) if x == *expected));
+        assert_eq!(header.encode(), *expected);
     }
 
     #[test]
-    fn encode_header_v2() {
+    fn encode_header_avml() {
         let expected = b"\x41\x56\x4d\x4c\x02\x00\x00\x00\x00\x10\x00\x00\x00\x00\x00\x00\
                          \x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
-        let header = super::Header {
+        let header = Header {
             range: Range {
                 start: 0x1000,
                 end: 0x20001,
             },
-            version: 2,
+            format: Format::AvmlCompressed,
         };
-        assert!(matches!(header.encode(), Ok(x) if x == *expected));
+        assert_eq!(header.encode(), *expected);
     }
 
     #[test]
     fn copy_block_skips_all_zero_ranges() -> super::Result<()> {
-        for version in [1, 2] {
+        for format in [Format::Lime, Format::AvmlCompressed] {
             let src = Cursor::new(vec![0; 0x4000]);
             let dst = Cursor::new(vec![]);
-            let mut image = super::Image {
-                version,
-                align_src: false,
-                src,
-                dst,
-            };
+            let mut image = Image::from_streams(format, src, dst);
             image.copy_block(0..0x4000)?;
             assert!(image.dst.get_ref().is_empty());
         }

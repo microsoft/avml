@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-use avml::{Result, Snapshot, Source, iomem};
+use avml::{Format, Result, Snapshot, Source, iomem};
 use clap::Parser;
 #[cfg(feature = "blobstore")]
 use core::num::NonZeroUsize;
@@ -111,14 +111,14 @@ async fn upload(config: &Config) -> Result<()> {
 }
 
 fn acquire(config: &Config) -> Result<()> {
-    let version = if config.compress { 2 } else { 1 };
+    let format = Format::from(config.compress);
 
     let ranges = iomem::parse()?;
     let snapshot = Snapshot::new(&config.filename, ranges)
         .source(config.source.as_ref())
         .max_disk_usage_percentage(config.max_disk_usage_percentage)
         .max_disk_usage(config.max_disk_usage)
-        .version(version);
+        .format(format);
     snapshot.create()?;
     Ok(())
 }

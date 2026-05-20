@@ -16,6 +16,7 @@ pub use crate::upload::blobstore::{BlobUploader, DEFAULT_CONCURRENCY};
 pub use crate::upload::http::put;
 pub use crate::{
     errors::Error,
+    image::Format,
     snapshot::{Snapshot, Source},
 };
 
