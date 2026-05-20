@@ -5,7 +5,7 @@
 use crate::disk_usage;
 use crate::{
     errors::format_error,
-    image::{Block, Image},
+    image::{Block, Format, Image},
 };
 use clap::ValueEnum;
 use core::{
@@ -197,7 +197,7 @@ pub struct Snapshot<'a> {
     source: Option<Source>,
     destination: &'a Path,
     memory_ranges: Vec<Range<u64>>,
-    version: u32,
+    format: Format,
     max_disk_usage: Option<NonZeroU64>,
     max_disk_usage_percentage: Option<f64>,
 }
@@ -205,14 +205,14 @@ pub struct Snapshot<'a> {
 impl<'a> Snapshot<'a> {
     /// Create a new memory snapshot.
     ///
-    /// The default version implements the `LiME` format.
+    /// Defaults to the `LiME` format.
     #[must_use]
     pub fn new(destination: &'a Path, memory_ranges: Vec<Range<u64>>) -> Self {
         Self {
             source: None,
             destination,
             memory_ranges,
-            version: 1,
+            format: Format::Lime,
             max_disk_usage: None,
             max_disk_usage_percentage: None,
         }
@@ -246,10 +246,10 @@ impl<'a> Snapshot<'a> {
         Self { source, ..self }
     }
 
-    /// Specify the version of the snapshot format
+    /// Specify the snapshot format.
     #[must_use]
-    pub fn version(self, version: u32) -> Self {
-        Self { version, ..self }
+    pub fn format(self, format: Format) -> Self {
+        Self { format, ..self }
     }
 
     fn create_source(&self, src: &Source) -> Result<()> {
@@ -394,7 +394,7 @@ impl<'a> Snapshot<'a> {
         }
 
         let mut image =
-            Image::<File, File>::new(self.version, Path::new("/proc/kcore"), self.destination)?;
+            Image::<File, File>::new(self.format, Path::new("/proc/kcore"), self.destination)?;
         self.check_disk_usage(&image)?;
 
         let file = elf::ElfStream::<NativeEndian, _>::open_stream(&mut image.src)?;
@@ -470,7 +470,7 @@ impl<'a> Snapshot<'a> {
             })
             .collect::<Vec<_>>();
 
-        let mut image = Image::<File, File>::new(self.version, mem, self.destination)?;
+        let mut image = Image::<File, File>::new(self.format, mem, self.destination)?;
         self.check_disk_usage(&image)?;
 
         image.write_blocks(&blocks)?;
