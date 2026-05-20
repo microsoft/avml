@@ -82,6 +82,7 @@ dependencies = [
  "rand",
  "reqwest",
  "snap",
+ "tempfile",
  "thiserror",
  "tokio",
  "tokio-util",
