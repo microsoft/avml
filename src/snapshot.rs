@@ -61,11 +61,20 @@ pub enum Error {
     #[error("unable to parse /proc/kcore: {0}")]
     KcoreParse(&'static str),
 
-    #[error("{context}: {detail}")]
-    Other {
-        context: &'static str,
-        detail: String,
-    },
+    #[error("u64 value {value} is too large to convert to f64")]
+    F64Conversion { value: u64 },
+
+    #[error("f64 value {value} cannot be converted to u64")]
+    U64Conversion { value: f64 },
+
+    #[error("snapshot destination path contains a NUL byte")]
+    PathContainsNul(#[from] std::ffi::NulError),
+
+    #[error("filesystem block size {value} does not fit in a u64")]
+    BlockSize { value: i128 },
+
+    #[error("operation not supported on this platform: {os}")]
+    UnsupportedPlatform { os: &'static str },
 
     #[error("disk error")]
     Disk(#[source] std::io::Error),
@@ -374,10 +383,7 @@ impl<'a, 'b> Snapshot<'a, 'b> {
     #[cfg(not(target_family = "unix"))]
     fn check_disk_usage<R: Read + Seek, W: Write>(&self, _: &Image<R, W>) -> Result<()> {
         if self.max_disk_usage.is_some() || self.max_disk_usage_percentage.is_some() {
-            return Err(Error::Other {
-                context: "unable to check disk usage on this platform",
-                detail: format!("os:{OS}"),
-            });
+            return Err(Error::UnsupportedPlatform { os: OS });
         }
         Ok(())
     }
