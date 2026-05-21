@@ -153,11 +153,6 @@ fn disk_usage(path: &Path) -> Result<DiskUsage> {
 
 #[cfg(test)]
 mod tests {
-    #![expect(
-        clippy::assertions_on_result_states,
-        reason = "tests intentionally assert on Result variants via is_err()"
-    )]
-
     use super::*;
     use std::path::PathBuf;
 
@@ -192,7 +187,7 @@ mod tests {
         assert_eq!(f64_to_u64(f64::MAX - 1.0)?, u64::MAX);
 
         f64_to_u64(0.0)?;
-        assert!(f64_to_u64(-0.1).is_err());
+        assert!(matches!(f64_to_u64(-0.1), Err(Error::U64Conversion { .. })));
         assert_eq!(f64_to_u64(EXCESSIVE_VALUE_F64)?, EXCESSIVE_VALUE);
 
         // note: testing equality of floating point values is tricky.
@@ -217,7 +212,10 @@ mod tests {
     fn test_check_max_usable() -> Result<()> {
         check_max_usage(1, TEN)?;
         check_max_usage(10, TEN)?;
-        assert!(check_max_usage(11 * 1024 * 1024, TEN).is_err());
+        assert!(matches!(
+            check_max_usage(11 * 1024 * 1024, TEN),
+            Err(Error::DiskUsageEstimateExceeded { .. })
+        ));
         Ok(())
     }
 
