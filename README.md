@@ -63,6 +63,33 @@ On the target host, execute avml with the generated SAS token.
 avml --sas-url ${SAS_URL} --delete output.lime
 ```
 
+## Streaming a memory image directly to Azure Blob Store
+
+For hosts where writing the snapshot to a local file first is undesirable
+(read-only root, limited disk, forensic chain-of-custody concerns), avml can
+stream the snapshot straight into a Block Blob without ever touching local
+disk:
+
+```
+avml --stream-to-blob --sas-url ${SAS_URL}
+```
+
+In streaming mode:
+
+- No local file is written. The `FILENAME` positional argument becomes optional.
+- The source is selected once up front, with the same preference order as the
+  `/dev/stdout` path (`/proc/kcore`, then `/dev/crash`, then `/dev/mem`).
+  Pass `--source` to override.
+- `--max-disk-usage`, `--max-disk-usage-percentage`, `--delete`, and `--url`
+  are rejected at startup (no local file to apply them to).
+- The block size is derived automatically so the snapshot fits within Azure's
+  per-blob 50,000-block limit. `--sas-block-size` (MiB) acts as a *floor*; if
+  the derived minimum is larger, the larger value wins.
+- `--sas-block-concurrency` caps the number of in-flight `stage_block` calls.
+  Peak RAM is approximately `(concurrency + 1) * block_size`.
+- If the snapshot fails mid-upload, staged blocks are abandoned without being
+  committed; Azure discards them automatically per its standard policy.
+
 ## Capturing a memory image of an Azure VM using VM Extensions
 
 On a secure host with `az cli` credentials, do the following:

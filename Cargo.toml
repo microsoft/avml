@@ -15,7 +15,7 @@ rust-version = "1.88.0"
 [features]
 default = ["put", "blobstore", "native-tls"]
 put = ["dep:reqwest", "reqwest?/stream", "dep:url", "dep:tokio", "dep:tokio-util", "dep:futures"]
-blobstore = ["dep:url", "dep:azure_core", "dep:azure_storage_blob", "dep:tokio", "dep:async-trait", "dep:futures"]
+blobstore = ["dep:url", "dep:azure_core", "dep:azure_storage_blob", "dep:tokio", "dep:async-trait", "dep:futures", "dep:tokio-util", "tokio/sync", "tokio-util/io-util"]
 status = ["dep:indicatif"]
 native-tls = ["dep:native-tls", "azure_core?/reqwest", "reqwest?/native-tls-vendored"]
 

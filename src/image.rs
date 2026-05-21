@@ -312,28 +312,31 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
         src_filename: &Path,
         dst_filename: &Path,
     ) -> Result<Image<File, File>> {
-        let src_filename = canonicalize(src_filename).map_err(|source| Error::Io {
-            context: "unable to canonicalize path",
-            source,
-        })?;
-        let align_src = [
-            Path::new("/dev/crash"),
-            Path::new("/dev/mem"),
-            Path::new("/proc/kcore"),
-        ]
-        .contains(&src_filename.as_path());
-
-        let src = OpenOptions::new()
-            .read(true)
-            .open(&src_filename)
-            .map_err(|source| Error::Io {
-                context: "unable to open memory source",
-                source,
-            })?;
-
+        let (src, align_src) = open_src(src_filename)?;
         let dst = Self::open_dst(dst_filename)?;
 
         Ok(Image::<File, File> {
+            format,
+            align_src,
+            src,
+            dst,
+        })
+    }
+
+    /// Open `src_filename` for reading and use `dst` as the destination
+    /// writer. Suitable for streaming the image to a non-file sink such as
+    /// `BlockBlobStream`.
+    ///
+    /// # Errors
+    /// Returns an error if the source file cannot be opened or canonicalized.
+    pub fn with_dst<W2: Write>(
+        format: Format,
+        src_filename: &Path,
+        dst: W2,
+    ) -> Result<Image<File, W2>> {
+        let (src, align_src) = open_src(src_filename)?;
+
+        Ok(Image::<File, W2> {
             format,
             align_src,
             src,
@@ -493,6 +496,29 @@ fn range_len(value: Range<u64>) -> u64 {
 
 fn range_usize(value: Range<u64>) -> Result<usize> {
     Ok(usize::try_from(value.end.saturating_sub(value.start))?)
+}
+
+fn open_src(src_filename: &Path) -> Result<(File, bool)> {
+    let src_filename = canonicalize(src_filename).map_err(|source| Error::Io {
+        context: "unable to canonicalize path",
+        source,
+    })?;
+    let align_src = [
+        Path::new("/dev/crash"),
+        Path::new("/dev/mem"),
+        Path::new("/proc/kcore"),
+    ]
+    .contains(&src_filename.as_path());
+
+    let src = OpenOptions::new()
+        .read(true)
+        .open(&src_filename)
+        .map_err(|source| Error::Io {
+            context: "unable to open memory source",
+            source,
+        })?;
+
+    Ok((src, align_src))
 }
 
 #[cfg(test)]

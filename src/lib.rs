@@ -11,9 +11,11 @@ mod snapshot;
 mod upload;
 
 #[cfg(feature = "blobstore")]
-pub use crate::upload::blobstore::{BlobUploader, DEFAULT_CONCURRENCY};
+pub use crate::upload::blobstore::{BlobUploader, DEFAULT_CONCURRENCY, Error as BlobError};
 #[cfg(feature = "put")]
 pub use crate::upload::http::put;
+#[cfg(feature = "blobstore")]
+pub use crate::upload::stream::{BLOB_MAX_BLOCKS, BlockBlobStream};
 pub use crate::{
     errors::Error,
     image::Format,

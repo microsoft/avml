@@ -277,18 +277,8 @@ impl<'a> Snapshot<'a> {
         if let Some(ref src) = self.source {
             self.create_source(src)?;
         } else if self.destination == Path::new("/dev/stdout") {
-            // If we're writing to stdout, we can't start over if reading from a
-            // source fails.  As such, we need to do more work to pick a source
-            // rather than just trying all available options.
-            if is_kcore_ok() {
-                self.create_source(&Source::ProcKcore)?;
-            } else if can_open(Path::new("/dev/crash")) {
-                self.create_source(&Source::DevCrash)?;
-            } else if can_open(Path::new("/dev/mem")) {
-                self.create_source(&Source::DevMem)?;
-            } else {
-                return Err(Error::NoSourceAvailable);
-            }
+            let src = Self::probe_single_source()?;
+            self.create_source(&src)?;
         } else {
             let crash = match self.create_source(&Source::DevCrash) {
                 Ok(()) => return Ok(()),
@@ -314,6 +304,61 @@ impl<'a> Snapshot<'a> {
         }
 
         Ok(())
+    }
+
+    /// Probe for an available source without trying multiple. Used when the
+    /// destination cannot be rewound (`/dev/stdout`, streaming blob upload).
+    ///
+    /// Preference order matches the historical `/dev/stdout` branch: kcore,
+    /// then `/dev/crash`, then `/dev/mem`.
+    ///
+    /// # Errors
+    /// Returns `NoSourceAvailable` if none of the three probes succeed.
+    pub fn probe_single_source() -> Result<Source> {
+        if is_kcore_ok() {
+            Ok(Source::ProcKcore)
+        } else if can_open(Path::new("/dev/crash")) {
+            Ok(Source::DevCrash)
+        } else if can_open(Path::new("/dev/mem")) {
+            Ok(Source::DevMem)
+        } else {
+            Err(Error::NoSourceAvailable)
+        }
+    }
+
+    /// Stream a memory snapshot to an arbitrary writer.
+    ///
+    /// Unlike [`Self::create`], this does **not** auto-retry across
+    /// sources. The destination is not assumed to be rewindable, so once
+    /// any bytes are written we cannot fall back to a different source.
+    /// The caller must either supply a [`Source`] via [`Self::source`] or
+    /// rely on [`Self::probe_single_source`] to pick one up front.
+    ///
+    /// `max_disk_usage` and `max_disk_usage_percentage` are ignored: with
+    /// no local disk involvement the limits don't apply. The caller is
+    /// expected to enforce any blob-side size limits separately.
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - No source is available
+    /// - There is a failure reading from the source
+    /// - Writing to `dst` fails
+    pub fn create_to_writer<W: Write>(&self, dst: W) -> Result<()> {
+        let source = match self.source {
+            Some(ref s) => s.clone(),
+            None => Self::probe_single_source()?,
+        };
+
+        match source {
+            Source::ProcKcore => self.kcore_to_writer(dst),
+            Source::DevCrash => self.phys_to_writer(Path::new("/dev/crash"), dst),
+            Source::DevMem => self.phys_to_writer(Path::new("/dev/mem"), dst),
+            Source::Raw(ref s) => self.phys_to_writer(s, dst),
+        }
+        .map_err(|e| Error::UnableToCreateSnapshotFromSource {
+            src: source,
+            source: Box::new(e),
+        })
     }
 
     // given a set of ranges from iomem and a set of Blocks derived from the
@@ -396,7 +441,22 @@ impl<'a> Snapshot<'a> {
         let mut image =
             Image::<File, File>::new(self.format, Path::new("/proc/kcore"), self.destination)?;
         self.check_disk_usage(&image)?;
+        Self::write_kcore_blocks(&mut image, &self.memory_ranges)
+    }
 
+    fn kcore_to_writer<W: Write>(&self, dst: W) -> Result<()> {
+        if !is_kcore_ok() {
+            return Err(Error::LockedDownKcore);
+        }
+
+        let mut image = Image::<File, W>::with_dst(self.format, Path::new("/proc/kcore"), dst)?;
+        Self::write_kcore_blocks(&mut image, &self.memory_ranges)
+    }
+
+    fn write_kcore_blocks<W: Write>(
+        image: &mut Image<File, W>,
+        memory_ranges: &[Range<u64>],
+    ) -> Result<()> {
         let file = elf::ElfStream::<NativeEndian, _>::open_stream(&mut image.src)?;
         let physical_ranges = Self::physical_ranges_from_segments(file.segments());
 
@@ -405,11 +465,11 @@ impl<'a> Snapshot<'a> {
                 "no usable PT_LOAD segments in /proc/kcore",
             ));
         }
-        if self.memory_ranges.is_empty() {
+        if memory_ranges.is_empty() {
             return Err(Error::KcoreParse("no initial memory range"));
         }
 
-        let blocks = Self::find_kcore_blocks(&self.memory_ranges, &physical_ranges);
+        let blocks = Self::find_kcore_blocks(memory_ranges, &physical_ranges);
         image.write_blocks(&blocks)?;
         Ok(())
     }
@@ -456,9 +516,23 @@ impl<'a> Snapshot<'a> {
     }
 
     fn phys(&self, mem: &Path) -> Result<()> {
+        let blocks = Self::phys_blocks(mem, &self.memory_ranges);
+        let mut image = Image::<File, File>::new(self.format, mem, self.destination)?;
+        self.check_disk_usage(&image)?;
+        image.write_blocks(&blocks)?;
+        Ok(())
+    }
+
+    fn phys_to_writer<W: Write>(&self, mem: &Path, dst: W) -> Result<()> {
+        let blocks = Self::phys_blocks(mem, &self.memory_ranges);
+        let mut image = Image::<File, W>::with_dst(self.format, mem, dst)?;
+        image.write_blocks(&blocks)?;
+        Ok(())
+    }
+
+    fn phys_blocks(mem: &Path, memory_ranges: &[Range<u64>]) -> Vec<Block> {
         let is_crash = mem == Path::new("/dev/crash");
-        let blocks = self
-            .memory_ranges
+        memory_ranges
             .iter()
             .map(|x| Block {
                 offset: x.start,
@@ -468,14 +542,7 @@ impl<'a> Snapshot<'a> {
                     x.start..x.end
                 },
             })
-            .collect::<Vec<_>>();
-
-        let mut image = Image::<File, File>::new(self.format, mem, self.destination)?;
-        self.check_disk_usage(&image)?;
-
-        image.write_blocks(&blocks)?;
-
-        Ok(())
+            .collect::<Vec<_>>()
     }
 }
 
