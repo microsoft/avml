@@ -115,7 +115,7 @@ fn acquire(config: &Config) -> Result<()> {
 
     let ranges = iomem::parse()?;
     let snapshot = Snapshot::new(&config.filename, ranges)
-        .source(config.source.as_ref())
+        .source(config.source.clone())
         .max_disk_usage_percentage(config.max_disk_usage_percentage)
         .max_disk_usage(config.max_disk_usage)
         .version(version);

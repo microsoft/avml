@@ -193,8 +193,8 @@ fn is_kcore_ok() -> bool {
         && can_open(Path::new("/proc/kcore"))
 }
 
-pub struct Snapshot<'a, 'b> {
-    source: Option<&'b Source>,
+pub struct Snapshot<'a> {
+    source: Option<Source>,
     destination: &'a Path,
     memory_ranges: Vec<Range<u64>>,
     version: u32,
@@ -202,7 +202,7 @@ pub struct Snapshot<'a, 'b> {
     max_disk_usage_percentage: Option<f64>,
 }
 
-impl<'a, 'b> Snapshot<'a, 'b> {
+impl<'a> Snapshot<'a> {
     /// Create a new memory snapshot.
     ///
     /// The default version implements the `LiME` format.
@@ -242,7 +242,7 @@ impl<'a, 'b> Snapshot<'a, 'b> {
 
     /// Specify the source for creating the snapshot
     #[must_use]
-    pub fn source(self, source: Option<&'b Source>) -> Self {
+    pub fn source(self, source: Option<Source>) -> Self {
         Self { source, ..self }
     }
 
@@ -274,7 +274,7 @@ impl<'a, 'b> Snapshot<'a, 'b> {
     /// - The estimated disk usage exceeds the specified limits
     /// - Failed to create or write to the destination file
     pub fn create(&self) -> Result<()> {
-        if let Some(src) = self.source {
+        if let Some(ref src) = self.source {
             self.create_source(src)?;
         } else if self.destination == Path::new("/dev/stdout") {
             // If we're writing to stdout, we can't start over if reading from a
