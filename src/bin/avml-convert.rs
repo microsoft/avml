@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-use avml::{Error, ONE_MB, Result, image};
+use avml::{Error, Result, image};
 use clap::{Parser, ValueEnum};
 use snap::read::FrameDecoder;
 use std::{
     fs::{File, metadata},
-    io::{Read, Seek, SeekFrom, Write, copy},
+    io::{Read, Seek, SeekFrom, Write, copy, repeat},
     path::{Path, PathBuf},
 };
 
@@ -71,29 +71,13 @@ where
             })?;
 
         let header = image.read_header()?;
-        let mut zeros = vec![0; ONE_MB];
 
-        let mut unmapped = usize::try_from(header.range.start.saturating_sub(current_dst))
-            .map_err(image::Error::IntConversion)?;
-        while unmapped > ONE_MB {
-            image
-                .dst
-                .write_all(&zeros)
-                .map_err(|source| image::Error::Io {
-                    context: "unable to write padding bytes",
-                    source,
-                })?;
-            unmapped = unmapped.saturating_sub(ONE_MB);
-        }
-        if unmapped > 0 {
-            zeros.resize(unmapped, 0);
-            image
-                .dst
-                .write_all(&zeros)
-                .map_err(|source| image::Error::Io {
-                    context: "unable to write padding bytes",
-                    source,
-                })?;
+        let pad = header.range.start.saturating_sub(current_dst);
+        if pad > 0 {
+            copy(&mut repeat(0).take(pad), &mut image.dst).map_err(|source| image::Error::Io {
+                context: "unable to write padding bytes",
+                source,
+            })?;
         }
 
         let size = header.size()?;
