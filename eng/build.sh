@@ -23,3 +23,4 @@ strip target/${ARCH}-unknown-linux-musl/release/avml
 strip target/${ARCH}-unknown-linux-musl/release/avml-minimal
 strip target/${ARCH}-unknown-linux-musl/release/avml-convert
 strip target/${ARCH}-unknown-linux-musl/release/avml-upload
+strip target/${ARCH}-unknown-linux-musl/release/avml-stream

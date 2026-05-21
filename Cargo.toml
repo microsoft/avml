@@ -71,3 +71,7 @@ codegen-units=1
 [[bin]]
 name = "avml-upload"
 required-features = ["put", "blobstore"]
+
+[[bin]]
+name = "avml-stream"
+required-features = ["blobstore"]

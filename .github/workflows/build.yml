@@ -48,6 +48,7 @@ jobs:
           target/*/release/avml-minimal
           target/*/release/avml-convert
           target/*/release/avml-upload
+          target/*/release/avml-stream
   arm64:
     permissions:
         contents: read
@@ -68,6 +69,7 @@ jobs:
           target/*/release/avml-minimal
           target/*/release/avml-convert
           target/*/release/avml-upload
+          target/*/release/avml-stream
   windows:
     permissions:
         contents: read
