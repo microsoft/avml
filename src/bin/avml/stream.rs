@@ -12,20 +12,8 @@ use std::path::PathBuf;
 use tokio_util::io::SyncIoBridge;
 use url::Url;
 
-/// Stream a memory snapshot directly to remote storage without writing
-/// to a local file.
-///
-/// Subcommands name the destination protocol. Only Azure Block Blob is
-/// supported today.
-#[derive(Parser)]
-#[command(author, version, long_about = None)]
-struct Cmd {
-    #[command(subcommand)]
-    command: Commands,
-}
-
 #[derive(Subcommand)]
-enum Commands {
+pub enum Commands {
     /// Stream to Azure Block Blob Storage via `stage_block` + `commit_block_list`.
     Blob(BlobArgs),
 
@@ -37,7 +25,7 @@ enum Commands {
 }
 
 #[derive(Parser)]
-struct BlobArgs {
+pub struct BlobArgs {
     /// compress via snappy
     #[arg(long)]
     compress: bool,
@@ -63,7 +51,7 @@ struct BlobArgs {
 }
 
 #[derive(Parser)]
-struct TcpArgs {
+pub struct TcpArgs {
     /// compress via snappy
     #[arg(long)]
     compress: bool,
@@ -78,10 +66,8 @@ struct TcpArgs {
     addr: String,
 }
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<()> {
-    let cmd = Cmd::parse();
-    match cmd.command {
+pub async fn run(cmd: Commands) -> Result<()> {
+    match cmd {
         Commands::Blob(args) => stream_blob(args).await,
         Commands::Tcp(args) => stream_tcp(args).await,
     }

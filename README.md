@@ -32,6 +32,20 @@ If the memory source is not specified on the commandline, AVML will iterate over
 * Oracle Linux: 6.8, 6.9, 6.10, 7.3, 7.4, 7.5, 7.6, 7.9, 8.5, 9.0
 * [CBL-Mariner](https://github.com/microsoft/CBL-Mariner): 1.0, 2.0
 
+## Subcommands
+
+`avml` is a single binary with subcommands. Each subcommand is gated by
+a Cargo feature so a minimal build only includes the capability you need:
+
+| Subcommand | Feature   | Default | What it does                                                   |
+|------------|-----------|---------|----------------------------------------------------------------|
+| `acquire`  | (always)  | yes     | Snapshot memory to a local file (optional upload after).       |
+| `convert`  | `convert` | yes     | Convert between AVML / LiME / raw formats.                     |
+| `upload`   | `upload`  | yes     | Upload a local file via HTTP PUT or to Azure Block Blob.       |
+| `stream`   | `stream`  | yes     | Stream a snapshot directly to a destination, no local file.    |
+
+Build a minimal acquire-only binary with `cargo build --release --no-default-features`.
+
 # Getting Started
 
 ## Capturing a compressed memory image
@@ -39,7 +53,7 @@ If the memory source is not specified on the commandline, AVML will iterate over
 On the target host:
 
 ```
-avml --compress output.lime.compressed
+avml acquire --compress output.lime.compressed
 ```
 
 ## Capturing an uncompressed memory image
@@ -47,7 +61,7 @@ avml --compress output.lime.compressed
 On the target host:
 
 ```
-avml output.lime
+avml acquire output.lime
 ```
 
 ## Capturing a memory image & uploading to Azure Blob Store
@@ -60,24 +74,23 @@ SAS_URL=$(az storage blob generate-sas --account-name ACCOUNT --container CONTAI
 
 On the target host, execute avml with the generated SAS token.
 ```
-avml --sas-url ${SAS_URL} --delete output.lime
+avml acquire --sas-url ${SAS_URL} --delete output.lime
 ```
 
 ## Streaming a memory image without writing to local disk
 
 For hosts where writing the snapshot to a local file first is undesirable
 (read-only root, limited disk, forensic chain-of-custody concerns), use
-the separate `avml-stream` binary. It picks the memory source once up
-front (same preference order as `avml`'s `/dev/stdout` path —
-`/proc/kcore`, then `/dev/crash`, then `/dev/mem`; pass `--source` to
-override) and writes bytes sequentially to the chosen destination. The
-source cannot be changed mid-stream, so there is no automatic source
-fallback.
+the `stream` subcommand. It picks the memory source once up front (same
+preference order as `acquire`'s `/dev/stdout` path — `/proc/kcore`, then
+`/dev/crash`, then `/dev/mem`; pass `--source` to override) and writes
+bytes sequentially to the chosen destination. The source cannot be
+changed mid-stream, so there is no automatic source fallback.
 
 ### To Azure Block Blob Storage
 
 ```
-avml-stream blob ${SAS_URL}
+avml stream blob ${SAS_URL}
 ```
 
 - The block size is derived automatically so the snapshot fits within
@@ -100,13 +113,20 @@ nc -l 9000 > snapshot.lime
 On the target host:
 
 ```
-avml-stream tcp collector.example.com:9000
+avml stream tcp collector.example.com:9000
 ```
 
 avml connects once and writes the snapshot sequentially. If the
 connection drops mid-stream, the snapshot aborts; there is no resume.
 No TLS — pair with an SSH tunnel or stunnel for confidentiality and
 integrity if needed.
+
+## Uploading a previously-captured snapshot
+
+```
+avml upload put  ./output.lime ${URL}              # HTTP PUT
+avml upload blob ./output.lime ${SAS_URL}          # Azure Block Blob
+```
 
 ## Capturing a memory image of an Azure VM using VM Extensions
 
@@ -116,7 +136,7 @@ On a secure host with `az cli` credentials, do the following:
 2. Create `config.json` containing the following information:
 ```
 {
-    "commandToExecute": "./avml --compress --sas-url <GENERATED_SAS_URL> --delete",
+    "commandToExecute": "./avml acquire --compress --sas-url <GENERATED_SAS_URL> --delete",
     "fileUris": ["https://FULL.URL.TO.AVML.example.com/avml"]
 }
 ```
@@ -130,72 +150,35 @@ On a secure host, generate a [S3 pre-signed URL](https://docs.aws.amazon.com/cli
 
 On the target host, execute avml with the generated pre-signed URL.
 ```
-avml --put ${URL} --delete output.lime
+avml acquire --url ${URL} --delete output.lime
 ```
 
 ## To decompress an AVML-compressed image
 ```
-avml-convert ./compressed.lime ./uncompressed.lime
+avml convert ./compressed.lime ./uncompressed.lime
 ```
 
 ## To compress an uncompressed LiME image
 ```
-avml-convert --source-format lime --format lime_compressed ./uncompressed.lime ./compressed.lime
+avml convert --source-format lime --format lime_compressed ./uncompressed.lime ./compressed.lime
 ```
 
 # Usage
 
 ```
-A portable volatile memory acquisition tool
+A portable volatile memory acquisition tool for Linux
 
-Usage: avml [OPTIONS] <FILENAME>
+Usage: avml <COMMAND>
 
-Arguments:
-  <FILENAME>
-          name of the file to write to on local system
-
-Options:
-      --compress
-          compress via snappy
-
-      --source <SOURCE>
-          specify input source
-
-          Possible values:
-          - /dev/crash:
-            Provides a read-only view of physical memory.  Access to memory using this device must be paged aligned and read one page at a time
-          - /dev/mem:
-            Provides a read-write view of physical memory, though AVML opens it in a read-only fashion.  Access to to memory using this device can be disabled using the kernel configuration options `CONFIG_STRICT_DEVMEM` or `CONFIG_IO_STRICT_DEVMEM`
-          - /proc/kcore:
-            Provides a virtual ELF coredump of kernel memory.  This can be used to access physical memory
-
-      --max-disk-usage <MAX_DISK_USAGE>
-          Specify the maximum estimated disk usage (in MB)
-
-      --max-disk-usage-percentage <MAX_DISK_USAGE_PERCENTAGE>
-          Specify the maximum estimated disk usage to stay under
-
-      --url <URL>
-          upload via HTTP PUT upon acquisition
-
-      --delete
-          delete upon successful upload
-
-      --sas-url <SAS_URL>
-          upload via Azure Blob Store upon acquisition
-
-      --sas-block-size <SAS_BLOCK_SIZE>
-          specify maximum block size in MiB; must be greater than 0
-
-      --sas-block-concurrency <SAS_BLOCK_CONCURRENCY>
-          specify blob upload concurrency; must be greater than 0
-
-  -h, --help
-          Print help (see a summary with '-h')
-
-  -V, --version
-          Print version
+Commands:
+  acquire  Acquire a memory snapshot to a local file (and optionally upload it)
+  convert  Convert between AVML and LiME snapshot formats and a raw memory image
+  upload   Upload an already-acquired snapshot file to remote storage
+  stream   Stream a memory snapshot directly to remote storage, without writing it to a local file
+  help     Print this message or the help of the given subcommand(s)
 ```
+
+Run `avml <COMMAND> --help` for per-command options.
 
 # Building on Ubuntu
 

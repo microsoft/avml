@@ -13,11 +13,14 @@ edition = "2024"
 rust-version = "1.88.0"
 
 [features]
-default = ["put", "blobstore", "native-tls"]
+default = ["stream", "upload", "convert", "native-tls"]
 put = ["dep:reqwest", "reqwest?/stream", "dep:url", "dep:tokio", "dep:tokio-util", "dep:futures"]
 blobstore = ["dep:url", "dep:azure_core", "dep:azure_storage_blob", "dep:tokio", "dep:async-trait", "dep:futures", "dep:tokio-util", "tokio/sync", "tokio-util/io-util"]
 status = ["dep:indicatif"]
 native-tls = ["dep:native-tls", "azure_core?/reqwest", "reqwest?/native-tls-vendored"]
+convert = []
+upload = ["put", "blobstore"]
+stream = ["blobstore", "tokio/net"]
 
 [dependencies]
 async-trait = {version="0.1", optional=true}
@@ -69,9 +72,5 @@ panic="abort"
 codegen-units=1
 
 [[bin]]
-name = "avml-upload"
-required-features = ["put", "blobstore"]
-
-[[bin]]
-name = "avml-stream"
-required-features = ["blobstore"]
+name = "avml"
+path = "src/bin/avml/main.rs"

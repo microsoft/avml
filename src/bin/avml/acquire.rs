@@ -3,17 +3,15 @@
 
 use avml::{Format, Result, Snapshot, Source, iomem};
 use clap::Parser;
-#[cfg(feature = "blobstore")]
+#[cfg(feature = "upload")]
 use core::num::NonZeroUsize;
 use core::{num::NonZeroU64, ops::Range};
 use std::path::PathBuf;
-#[cfg(any(feature = "blobstore", feature = "put"))]
+#[cfg(feature = "upload")]
 use {avml::Error, tokio::fs::remove_file, url::Url};
 
 #[derive(Parser)]
-/// A portable volatile memory acquisition tool for Linux
-#[command(author, version, about, long_about = None)]
-struct Config {
+pub struct Args {
     /// compress via snappy
     #[arg(long)]
     compress: bool,
@@ -31,27 +29,27 @@ struct Config {
     max_disk_usage_percentage: Option<f64>,
 
     /// upload via HTTP PUT upon acquisition
-    #[cfg(feature = "put")]
+    #[cfg(feature = "upload")]
     #[arg(long)]
     url: Option<Url>,
 
     /// delete upon successful upload
-    #[cfg(any(feature = "blobstore", feature = "put"))]
+    #[cfg(feature = "upload")]
     #[arg(long)]
     delete: bool,
 
     /// upload via Azure Blob Store upon acquisition
-    #[cfg(feature = "blobstore")]
+    #[cfg(feature = "upload")]
     #[arg(long)]
     sas_url: Option<Url>,
 
     /// specify maximum block size in MiB; must be greater than 0
-    #[cfg(feature = "blobstore")]
+    #[cfg(feature = "upload")]
     #[arg(long)]
     sas_block_size: Option<NonZeroU64>,
 
     /// specify blob upload concurrency; must be greater than 0
-    #[cfg(feature = "blobstore")]
+    #[cfg(feature = "upload")]
     #[arg(long)]
     sas_block_concurrency: Option<NonZeroUsize>,
 
@@ -75,31 +73,38 @@ fn disk_usage_percentage(s: &str) -> core::result::Result<f64, String> {
     }
 }
 
-#[cfg(any(feature = "blobstore", feature = "put"))]
-async fn upload(config: &Config) -> Result<()> {
-    let mut delete = false;
+pub fn run(args: &Args) -> Result<()> {
+    let format = Format::from(args.compress);
 
-    #[cfg(feature = "put")]
-    {
-        if let Some(ref url) = config.url {
-            avml::put(&config.filename, url).await?;
-            delete = true;
-        }
+    let ranges = iomem::parse()?;
+    let snapshot = Snapshot::new(&args.filename, ranges)
+        .source(args.source.clone())
+        .max_disk_usage_percentage(args.max_disk_usage_percentage)
+        .max_disk_usage(args.max_disk_usage)
+        .format(format);
+    snapshot.create()?;
+    Ok(())
+}
+
+#[cfg(feature = "upload")]
+pub async fn upload_after_acquire(args: &Args) -> Result<()> {
+    let mut did_upload = false;
+
+    if let Some(ref url) = args.url {
+        avml::put(&args.filename, url).await?;
+        did_upload = true;
     }
 
-    #[cfg(feature = "blobstore")]
-    {
-        if let Some(ref sas_url) = config.sas_url {
-            let uploader = avml::BlobUploader::new(sas_url)?
-                .block_size(config.sas_block_size)
-                .concurrency(config.sas_block_concurrency);
-            uploader.upload_file(&config.filename).await?;
-            delete = true;
-        }
+    if let Some(ref sas_url) = args.sas_url {
+        let uploader = avml::BlobUploader::new(sas_url)?
+            .block_size(args.sas_block_size)
+            .concurrency(args.sas_block_concurrency);
+        uploader.upload_file(&args.filename).await?;
+        did_upload = true;
     }
 
-    if delete && config.delete {
-        remove_file(&config.filename)
+    if did_upload && args.delete {
+        remove_file(&args.filename)
             .await
             .map_err(|source| Error::Io {
                 context: "unable to remove snapshot",
@@ -108,31 +113,4 @@ async fn upload(config: &Config) -> Result<()> {
     }
 
     Ok(())
-}
-
-fn acquire(config: &Config) -> Result<()> {
-    let format = Format::from(config.compress);
-
-    let ranges = iomem::parse()?;
-    let snapshot = Snapshot::new(&config.filename, ranges)
-        .source(config.source.clone())
-        .max_disk_usage_percentage(config.max_disk_usage_percentage)
-        .max_disk_usage(config.max_disk_usage)
-        .format(format);
-    snapshot.create()?;
-    Ok(())
-}
-
-#[cfg(not(any(feature = "blobstore", feature = "put")))]
-fn main() -> Result<()> {
-    let config = Config::parse();
-    acquire(&config)
-}
-
-#[cfg(any(feature = "blobstore", feature = "put"))]
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<()> {
-    let config = Config::parse();
-    acquire(&config)?;
-    upload(&config).await
 }

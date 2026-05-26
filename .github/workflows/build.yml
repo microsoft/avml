@@ -38,7 +38,7 @@ jobs:
     - name: build
       run: eng/ci.sh
     - name: Run tests
-      run: sudo target/x86_64-unknown-linux-musl/release/avml --compress output.lime
+      run: sudo target/x86_64-unknown-linux-musl/release/avml acquire --compress output.lime
     - name: upload artifacts
       uses: actions/upload-artifact@v7.0.1
       with:
@@ -46,9 +46,6 @@ jobs:
         path: |
           target/*/release/avml
           target/*/release/avml-minimal
-          target/*/release/avml-convert
-          target/*/release/avml-upload
-          target/*/release/avml-stream
   arm64:
     permissions:
         contents: read
@@ -59,7 +56,7 @@ jobs:
     - name: build
       run: eng/ci.sh
     - name: Run tests
-      run: sudo target/aarch64-unknown-linux-musl/release/avml --compress output.lime
+      run: sudo target/aarch64-unknown-linux-musl/release/avml acquire --compress output.lime
     - name: upload artifacts
       uses: actions/upload-artifact@v7.0.1
       with:
@@ -67,9 +64,6 @@ jobs:
         path: |
           target/*/release/avml
           target/*/release/avml-minimal
-          target/*/release/avml-convert
-          target/*/release/avml-upload
-          target/*/release/avml-stream
   windows:
     permissions:
         contents: read
@@ -81,10 +75,8 @@ jobs:
         git config --global core.eol lf
     - uses: actions/checkout@v6.0.2
     - uses: Swatinem/rust-cache@65012b490220f477f20ab979e35ae732e6de4e68 # v2
-    - name: build avml-convert
-      run: cargo build --release --bin avml-convert --locked
-    - name: build avml-upload
-      run: cargo build --release --bin avml-upload --locked
+    - name: build avml
+      run: cargo build --release --bin avml --locked
     - name: Run tests
       run: cargo test
     - name: upload artifacts
@@ -92,7 +84,5 @@ jobs:
       with:
         name: windows-artifacts
         path: |
-          target/release/avml-convert.exe
-          target/release/avml_convert.pdb
-          target/release/avml-upload.exe
-          target/release/avml_upload.pdb
+          target/release/avml.exe
+          target/release/avml.pdb
