@@ -63,25 +63,23 @@ On the target host, execute avml with the generated SAS token.
 avml --sas-url ${SAS_URL} --delete output.lime
 ```
 
-## Streaming a memory image directly to Azure Blob Store
+## Streaming a memory image without writing to local disk
 
 For hosts where writing the snapshot to a local file first is undesirable
 (read-only root, limited disk, forensic chain-of-custody concerns), use
-the separate `avml-stream` binary to send the snapshot straight into a
-Block Blob without ever touching local disk:
+the separate `avml-stream` binary. It picks the memory source once up
+front (same preference order as `avml`'s `/dev/stdout` path —
+`/proc/kcore`, then `/dev/crash`, then `/dev/mem`; pass `--source` to
+override) and writes bytes sequentially to the chosen destination. The
+source cannot be changed mid-stream, so there is no automatic source
+fallback.
+
+### To Azure Block Blob Storage
 
 ```
 avml-stream blob ${SAS_URL}
 ```
 
-In streaming mode:
-
-- No local file is written.
-- The source is selected once up front, with the same preference order as
-  the `/dev/stdout` path on `avml` (`/proc/kcore`, then `/dev/crash`,
-  then `/dev/mem`). Pass `--source` to override. The source cannot be
-  changed once any bytes have been written, so there is no automatic
-  fallback.
 - The block size is derived automatically so the snapshot fits within
   Azure's per-blob 50,000-block limit. `--sas-block-size` (MiB) acts as
   a *floor*; if the derived minimum is larger, the larger value wins.
@@ -90,6 +88,25 @@ In streaming mode:
 - If the snapshot fails mid-upload, staged blocks are abandoned without
   being committed; Azure discards them automatically per its standard
   policy.
+
+### To a remote TCP listener
+
+On the collector host:
+
+```
+nc -l 9000 > snapshot.lime
+```
+
+On the target host:
+
+```
+avml-stream tcp collector.example.com:9000
+```
+
+avml connects once and writes the snapshot sequentially. If the
+connection drops mid-stream, the snapshot aborts; there is no resume.
+No TLS — pair with an SSH tunnel or stunnel for confidentiality and
+integrity if needed.
 
 ## Capturing a memory image of an Azure VM using VM Extensions
 

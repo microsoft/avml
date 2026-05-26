@@ -9,6 +9,7 @@ use core::{
     ops::Range,
 };
 use std::path::PathBuf;
+use tokio_util::io::SyncIoBridge;
 use url::Url;
 
 /// Stream a memory snapshot directly to remote storage without writing
@@ -27,6 +28,12 @@ struct Cmd {
 enum Commands {
     /// Stream to Azure Block Blob Storage via `stage_block` + `commit_block_list`.
     Blob(BlobArgs),
+
+    /// Stream to a remote TCP listener (e.g. `nc -l PORT > snapshot.lime`).
+    ///
+    /// The destination is opened with a single `connect`; on connection
+    /// failure mid-stream the snapshot aborts without retry.
+    Tcp(TcpArgs),
 }
 
 #[derive(Parser)]
@@ -55,11 +62,28 @@ struct BlobArgs {
     sas_block_concurrency: Option<NonZeroUsize>,
 }
 
+#[derive(Parser)]
+struct TcpArgs {
+    /// compress via snappy
+    #[arg(long)]
+    compress: bool,
+
+    /// specify input source. If unset, the source is probed once at
+    /// start (kcore, then /dev/crash, then /dev/mem); the choice cannot
+    /// be changed once any bytes have been written.
+    #[arg(long, value_enum)]
+    source: Option<Source>,
+
+    /// destination TCP listener as host:port. Hostnames are resolved.
+    addr: String,
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     let cmd = Cmd::parse();
     match cmd.command {
         Commands::Blob(args) => stream_blob(args).await,
+        Commands::Tcp(args) => stream_tcp(args).await,
     }
 }
 
@@ -159,4 +183,43 @@ fn derive_block_size(
         context: "block size derivation produced zero",
         source: std::io::Error::other("derived zero block size"),
     })
+}
+
+async fn stream_tcp(args: TcpArgs) -> Result<()> {
+    let ranges = iomem::parse()?;
+    let format = Format::from(args.compress);
+    let source = match args.source {
+        Some(s) => s,
+        None => Snapshot::probe_single_source().map_err(avml::Error::from)?,
+    };
+
+    let socket = tokio::net::TcpStream::connect(&args.addr)
+        .await
+        .map_err(|io_err| avml::Error::Io {
+            context: "unable to connect to TCP destination",
+            source: io_err,
+        })?;
+    let mut bridge = SyncIoBridge::new(socket);
+
+    tokio::task::spawn_blocking(move || -> Result<()> {
+        // Snapshot::create_to_writer never inspects `destination`;
+        // any in-scope path satisfies the &Path borrow.
+        let dummy = PathBuf::from("/dev/null");
+        let snapshot = Snapshot::new(&dummy, ranges)
+            .source(Some(source))
+            .format(format);
+        snapshot
+            .create_to_writer(&mut bridge)
+            .map_err(avml::Error::from)?;
+        bridge.shutdown().map_err(|io_err| avml::Error::Io {
+            context: "unable to finish TCP stream",
+            source: io_err,
+        })?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| avml::Error::Io {
+        context: "spawn_blocking join failed",
+        source: std::io::Error::other(e.to_string()),
+    })?
 }
