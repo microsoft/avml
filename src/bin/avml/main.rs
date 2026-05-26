@@ -4,10 +4,15 @@
 use avml::Result;
 use clap::{Parser, Subcommand};
 
+// `acquire` and `stream` both depend on Linux kernel interfaces
+// (/proc/iomem, /proc/kcore, /dev/crash, /dev/mem). They're absent
+// on non-Linux targets; on macOS / BSD / Windows the binary ships
+// only `convert` and `upload` (whichever features the user enabled).
+#[cfg(target_os = "linux")]
 mod acquire;
 #[cfg(feature = "convert")]
 mod convert;
-#[cfg(feature = "stream")]
+#[cfg(all(feature = "stream", target_os = "linux"))]
 mod stream;
 #[cfg(feature = "upload")]
 mod upload;
@@ -23,6 +28,7 @@ struct Cmd {
 #[derive(Subcommand)]
 enum Commands {
     /// Acquire a memory snapshot to a local file (and optionally upload it).
+    #[cfg(target_os = "linux")]
     Acquire(acquire::Args),
 
     /// Convert between AVML and `LiME` snapshot formats and a raw memory image.
@@ -36,7 +42,7 @@ enum Commands {
 
     /// Stream a memory snapshot directly to remote storage, without
     /// writing it to a local file.
-    #[cfg(feature = "stream")]
+    #[cfg(all(feature = "stream", target_os = "linux"))]
     #[command(subcommand)]
     Stream(stream::Commands),
 }
@@ -45,6 +51,7 @@ enum Commands {
 fn main() -> Result<()> {
     let cmd = Cmd::parse();
     match cmd.command {
+        #[cfg(target_os = "linux")]
         Commands::Acquire(args) => acquire::run(&args),
         #[cfg(feature = "convert")]
         Commands::Convert(args) => convert::run(&args),
@@ -56,6 +63,7 @@ fn main() -> Result<()> {
 async fn main() -> Result<()> {
     let cmd = Cmd::parse();
     match cmd.command {
+        #[cfg(target_os = "linux")]
         Commands::Acquire(args) => {
             acquire::run(&args)?;
             #[cfg(feature = "upload")]
@@ -66,7 +74,7 @@ async fn main() -> Result<()> {
         Commands::Convert(args) => convert::run(&args),
         #[cfg(feature = "upload")]
         Commands::Upload(sub) => upload::run(sub).await,
-        #[cfg(feature = "stream")]
+        #[cfg(all(feature = "stream", target_os = "linux"))]
         Commands::Stream(sub) => stream::run(sub).await,
     }
 }
