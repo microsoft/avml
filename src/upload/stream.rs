@@ -415,19 +415,39 @@ impl BlockBlobStream {
         self.stager.commit_block_list(block_ids).await
     }
 
-    /// Await all in-flight `stage_block` calls without committing. Staged
-    /// but uncommitted blocks are discarded by Azure on its own timeline.
+    /// Close the writer side and await all in-flight `stage_block` calls
+    /// without committing. Staged but uncommitted blocks are discarded by
+    /// Azure on its own timeline.
     ///
     /// # Errors
     /// Best-effort; returns the first error seen, but does not call
     /// `commit_block_list`.
-    pub async fn abort(mut self) -> Result<()> {
-        drop(self.await_uploader().await);
+    pub async fn abort(self) -> Result<()> {
+        let result = Self::await_uploader_handle(self.close_for_abort()).await?;
+        if let Some(err) = result.first_error {
+            return Err(err);
+        }
         Ok(())
     }
 
     async fn await_uploader(&mut self) -> Result<UploaderResult> {
-        let Some(uploader) = self.uploader.take() else {
+        Self::await_uploader_handle(self.uploader.take()).await
+    }
+
+    fn close_for_abort(self) -> Option<JoinHandle<UploaderResult>> {
+        let Self {
+            bridge: _closed_bridge,
+            uploader,
+            stager: _,
+            max_blocks: _,
+        } = self;
+        uploader
+    }
+
+    async fn await_uploader_handle(
+        uploader: Option<JoinHandle<UploaderResult>>,
+    ) -> Result<UploaderResult> {
+        let Some(uploader) = uploader else {
             return Ok(UploaderResult {
                 completed: Vec::new(),
                 first_error: None,
