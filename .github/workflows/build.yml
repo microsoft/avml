@@ -30,6 +30,15 @@ jobs:
         locked: true
     - name: lint
       run: eng/lint.sh
+  test:
+    permissions:
+        contents: read
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6.0.3
+    - uses: Swatinem/rust-cache@c106961feec855ef5a58494c5a2a31c9d80429a9 # v2
+    - name: test
+      run: cargo test --all-features --locked
   x64:
     runs-on: ubuntu-latest
     steps:
