@@ -11,7 +11,7 @@ or kernel a priori.  No on-target compilation or fingerprinting is needed.
 
 ## Features
 * Save recorded images to external locations via Azure Blob Store or HTTP PUT
-* Automatic Retry (in case of network connection issues) with exponential backoff for uploading to Azure Blob Store
+* Azure Blob Storage uploads retry transient failures via the Azure SDK's default exponential backoff policy (8 attempts, capped at one minute total elapsed).
 * Optional page level compression using [Snappy](https://google.github.io/snappy/).
 * Uses [LiME](https://github.com/504ensicsLabs/LiME/) output format (when not using compression).
 
