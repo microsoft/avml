@@ -137,6 +137,7 @@ struct BlockBlobAsyncWriter {
     sender: Option<mpsc::Sender<UploaderMsg>>,
     buf: Vec<u8>,
     block_size: usize,
+    max_blocks: u64,
     next_index: u64,
     /// `Some` once the uploader has observed (or the writer has observed
     /// via a closed channel) that the receiver is gone. After that point
@@ -150,24 +151,51 @@ impl BlockBlobAsyncWriter {
     fn new(
         sender: mpsc::Sender<UploaderMsg>,
         block_size: NonZeroUsize,
+        max_blocks: u64,
         error_slot: Arc<Mutex<Option<Error>>>,
     ) -> Self {
         Self {
             sender: Some(sender),
             buf: Vec::with_capacity(block_size.get()),
             block_size: block_size.get(),
+            max_blocks,
             next_index: 0,
             error_slot,
             pending_reservation: None,
         }
     }
 
-    fn take_first_error(&self) -> Option<Error> {
-        if let Ok(mut slot) = self.error_slot.lock() {
-            slot.take()
+    fn first_error_io(&self) -> Option<std::io::Error> {
+        if let Ok(slot) = self.error_slot.lock() {
+            slot.as_ref()
+                .map(ToString::to_string)
+                .map(std::io::Error::other)
         } else {
             None
         }
+    }
+
+    fn record_error_and_close(&mut self, err: Error) -> std::io::Error {
+        let message = err.to_string();
+        if let Ok(mut slot) = self.error_slot.lock()
+            && slot.is_none()
+        {
+            *slot = Some(err);
+        }
+        self.sender = None;
+        std::io::Error::other(message)
+    }
+
+    fn allocate_index(&mut self) -> Result<u64> {
+        if self.next_index >= self.max_blocks {
+            return Err(Error::TooLarge);
+        }
+
+        let index = self.next_index;
+        // `max_blocks` enforces the practical cap; `checked_add` covers the
+        // theoretical u64 counter overflow without reusing a block ID.
+        self.next_index = self.next_index.checked_add(1).ok_or(Error::TooLarge)?;
+        Ok(index)
     }
 
     /// Try to dispatch the current buffer if it is full. Returns
@@ -202,13 +230,15 @@ impl BlockBlobAsyncWriter {
                 // Receiver dropped -> uploader exited (probably due to error).
                 self.sender = None;
                 let err = self
-                    .take_first_error()
-                    .unwrap_or_else(|| Error::Io(std::io::Error::other("uploader exited early")));
-                Poll::Ready(Err(std::io::Error::other(err.to_string())))
+                    .first_error_io()
+                    .unwrap_or_else(|| std::io::Error::other("uploader exited early"));
+                Poll::Ready(Err(err))
             }
             Poll::Ready(Ok(permit)) => {
-                let index = self.next_index;
-                self.next_index = self.next_index.saturating_add(1);
+                let index = match self.allocate_index() {
+                    Ok(index) => index,
+                    Err(err) => return Poll::Ready(Err(self.record_error_and_close(err))),
+                };
                 let block_size = self.block_size;
                 let data = core::mem::replace(&mut self.buf, Vec::with_capacity(block_size));
                 permit.send(UploaderMsg::Stage {
@@ -227,8 +257,8 @@ impl AsyncWrite for BlockBlobAsyncWriter {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<IoResult<usize>> {
-        if let Some(err) = self.take_first_error() {
-            return Poll::Ready(Err(std::io::Error::other(err.to_string())));
+        if let Some(err) = self.first_error_io() {
+            return Poll::Ready(Err(err));
         }
 
         if self.buf.len() >= self.block_size {
@@ -255,8 +285,8 @@ impl AsyncWrite for BlockBlobAsyncWriter {
     }
 
     fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<IoResult<()>> {
-        if let Some(err) = self.take_first_error() {
-            return Poll::Ready(Err(std::io::Error::other(err.to_string())));
+        if let Some(err) = self.first_error_io() {
+            return Poll::Ready(Err(err));
         }
 
         // Stage the trailing partial buffer, if any, as the final block.
@@ -279,14 +309,16 @@ impl AsyncWrite for BlockBlobAsyncWriter {
                 }
                 Poll::Ready(Err(_)) => {
                     self.sender = None;
-                    let err = self.take_first_error().unwrap_or_else(|| {
-                        Error::Io(std::io::Error::other("uploader exited early"))
-                    });
-                    return Poll::Ready(Err(std::io::Error::other(err.to_string())));
+                    let err = self
+                        .first_error_io()
+                        .unwrap_or_else(|| std::io::Error::other("uploader exited early"));
+                    return Poll::Ready(Err(err));
                 }
                 Poll::Ready(Ok(permit)) => {
-                    let index = self.next_index;
-                    self.next_index = self.next_index.saturating_add(1);
+                    let index = match self.allocate_index() {
+                        Ok(index) => index,
+                        Err(err) => return Poll::Ready(Err(self.record_error_and_close(err))),
+                    };
                     let block_size = self.block_size;
                     let data = core::mem::replace(&mut self.buf, Vec::with_capacity(block_size));
                     permit.send(UploaderMsg::Stage {
@@ -324,9 +356,6 @@ pub struct BlockBlobStream {
     bridge: SyncIoBridge<BlockBlobAsyncWriter>,
     uploader: Option<JoinHandle<UploaderResult>>,
     stager: Arc<dyn BlockStager>,
-    /// Maximum number of blocks Azure will accept in a single commit.
-    /// Enforced when the uploader assigns indices.
-    max_blocks: u64,
 }
 
 /// Azure's per-blob block count limit. Public for callers (e.g. the
@@ -355,6 +384,15 @@ impl BlockBlobStream {
         block_size: NonZeroUsize,
         concurrency: NonZeroUsize,
     ) -> Self {
+        Self::with_stager_and_max_blocks(stager, block_size, concurrency, BLOB_MAX_BLOCKS)
+    }
+
+    pub(crate) fn with_stager_and_max_blocks(
+        stager: Arc<dyn BlockStager>,
+        block_size: NonZeroUsize,
+        concurrency: NonZeroUsize,
+        max_blocks: u64,
+    ) -> Self {
         let handle = Handle::current();
         let error_slot = Arc::new(Mutex::new(None));
         let (tx, rx) = mpsc::channel::<UploaderMsg>(concurrency.get());
@@ -366,14 +404,13 @@ impl BlockBlobStream {
             error_slot.clone(),
         ));
 
-        let writer = BlockBlobAsyncWriter::new(tx, block_size, error_slot);
+        let writer = BlockBlobAsyncWriter::new(tx, block_size, max_blocks, error_slot);
         let bridge = SyncIoBridge::new_with_handle(writer, handle);
 
         Self {
             bridge,
             uploader: Some(uploader),
             stager,
-            max_blocks: BLOB_MAX_BLOCKS,
         }
     }
 
@@ -406,10 +443,6 @@ impl BlockBlobStream {
             return Err(err);
         }
         let mut indices = result.completed;
-        let staged_count = u64::try_from(indices.len()).unwrap_or(u64::MAX);
-        if staged_count > self.max_blocks {
-            return Err(Error::TooLarge);
-        }
         indices.sort_unstable();
         let block_ids: Vec<Vec<u8>> = indices.into_iter().map(block_id).collect();
         self.stager.commit_block_list(block_ids).await
@@ -439,7 +472,6 @@ impl BlockBlobStream {
             bridge: _closed_bridge,
             uploader,
             stager: _,
-            max_blocks: _,
         } = self;
         uploader
     }
@@ -636,6 +668,20 @@ mod tests {
         BlockBlobStream::with_stager(stager, nz(block_size), nz(concurrency))
     }
 
+    fn build_stream_with_max_blocks(
+        stager: Arc<FakeStager>,
+        block_size: usize,
+        concurrency: usize,
+        max_blocks: u64,
+    ) -> BlockBlobStream {
+        BlockBlobStream::with_stager_and_max_blocks(
+            stager,
+            nz(block_size),
+            nz(concurrency),
+            max_blocks,
+        )
+    }
+
     async fn run_write<F>(stream: BlockBlobStream, write: F) -> (BlockBlobStream, IoResult<()>)
     where
         F: FnOnce(&mut dyn Write) -> IoResult<()> + Send + 'static,
@@ -710,6 +756,70 @@ mod tests {
         assert_eq!(staged.len(), 2);
         assert_eq!(staged[0].1.len(), 4);
         assert_eq!(staged[1].1.len(), 2);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn max_blocks_cap_is_enforced_before_commit() {
+        let stager = Arc::new(FakeStager::new());
+        let stream = build_stream_with_max_blocks(stager.clone(), 1, 2, 3);
+
+        let payload: Vec<u8> = (0..4).collect();
+        let (stream, result) = run_write(stream, move |w| w.write_all(&payload)).await;
+        let write_err = result.expect_err("four single-byte blocks exceed max_blocks=3");
+        assert_eq!(write_err.to_string(), Error::TooLarge.to_string());
+
+        let err = stream
+            .finalize()
+            .await
+            .expect_err("finalize reports the assignment-time cap failure");
+        assert!(matches!(err, Error::TooLarge), "got: {err:?}");
+        assert!(
+            stager.locked_commits().is_empty(),
+            "cap failure must not commit a partial block list"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn exactly_max_blocks_full_blocks_succeeds() {
+        let stager = Arc::new(FakeStager::new());
+        let stream = build_stream_with_max_blocks(stager.clone(), 2, 2, 3);
+
+        let payload: Vec<u8> = (0..6).collect();
+        let (stream, result) = run_write(stream, move |w| w.write_all(&payload)).await;
+        result.expect("exactly three two-byte blocks are within the cap");
+        stream
+            .finalize()
+            .await
+            .expect("finalize commits capped write");
+
+        let commits = stager.locked_commits();
+        assert_eq!(commits.len(), 1);
+        assert_eq!(
+            commits[0].len(),
+            3,
+            "exactly max_blocks block IDs are committed"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn byte_past_max_blocks_fails_on_trailing_partial() {
+        let stager = Arc::new(FakeStager::new());
+        let stream = build_stream_with_max_blocks(stager.clone(), 2, 2, 3);
+
+        let payload: Vec<u8> = (0..7).collect();
+        let (stream, result) = run_write(stream, move |w| w.write_all(&payload)).await;
+        let write_err = result.expect_err("seventh byte requires a fourth block during shutdown");
+        assert_eq!(write_err.to_string(), Error::TooLarge.to_string());
+
+        let err = stream
+            .finalize()
+            .await
+            .expect_err("finalize preserves the shutdown cap failure");
+        assert!(matches!(err, Error::TooLarge), "got: {err:?}");
+        assert!(
+            stager.locked_commits().is_empty(),
+            "no commit after the boundary failure"
+        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
