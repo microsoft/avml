@@ -10,6 +10,50 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[derive(Parser)]
+pub struct Args {
+    /// specify input format
+    #[arg(long, value_enum, default_value_t = CliFormat::LimeCompressed)]
+    source_format: CliFormat,
+
+    /// specify output format
+    #[arg(long, value_enum, default_value_t = CliFormat::Lime)]
+    format: CliFormat,
+
+    /// name of the source file to read from on local system
+    src: PathBuf,
+
+    /// name of the destination file to write to on local system
+    dst: PathBuf,
+}
+
+#[derive(ValueEnum, Clone, Copy, PartialEq, Eq)]
+enum CliFormat {
+    Raw,
+    Lime,
+    #[value(rename_all = "snake_case")]
+    LimeCompressed,
+}
+
+pub fn run(args: &Args) -> Result<()> {
+    match (args.source_format, args.format) {
+        (CliFormat::Lime | CliFormat::LimeCompressed, CliFormat::Raw) => {
+            convert_to_raw(&args.src, &args.dst)
+        }
+        (CliFormat::Lime, CliFormat::LimeCompressed) => {
+            convert(&args.src, &args.dst, Format::AvmlCompressed)
+        }
+        (CliFormat::LimeCompressed, CliFormat::Lime) => convert(&args.src, &args.dst, Format::Lime),
+        (CliFormat::Raw, CliFormat::Lime) => convert_from_raw(&args.src, &args.dst, Format::Lime),
+        (CliFormat::Raw, CliFormat::LimeCompressed) => {
+            convert_from_raw(&args.src, &args.dst, Format::AvmlCompressed)
+        }
+        (CliFormat::Lime, CliFormat::Lime)
+        | (CliFormat::LimeCompressed, CliFormat::LimeCompressed)
+        | (CliFormat::Raw, CliFormat::Raw) => Err(Error::NoConversionRequired),
+    }
+}
+
 fn convert(src: &Path, dst: &Path, format: Format) -> Result<()> {
     let src_len = metadata(src)
         .map_err(|source| image::Error::Io {
@@ -147,61 +191,9 @@ fn convert_from_raw(src: &Path, dst: &Path, format: Format) -> Result<()> {
     encode_raw_image(&mut image, src_len)
 }
 
-#[derive(Parser)]
-/// AVML compress/decompress tool
-#[command(version)]
-struct Config {
-    /// specify output format
-    #[arg(long, value_enum, default_value_t = CliFormat::LimeCompressed)]
-    source_format: CliFormat,
-
-    /// specify output format
-    #[arg(long, value_enum, default_value_t = CliFormat::Lime)]
-    format: CliFormat,
-
-    /// name of the source file to read to on local system
-    src: PathBuf,
-
-    /// name of the destination file to write to on local system
-    dst: PathBuf,
-}
-
-#[derive(ValueEnum, Clone, Copy, PartialEq, Eq)]
-enum CliFormat {
-    Raw,
-    Lime,
-    #[value(rename_all = "snake_case")]
-    LimeCompressed,
-}
-
-fn main() -> Result<()> {
-    let config = Config::parse();
-
-    match (config.source_format, config.format) {
-        (CliFormat::Lime | CliFormat::LimeCompressed, CliFormat::Raw) => {
-            convert_to_raw(&config.src, &config.dst)
-        }
-        (CliFormat::Lime, CliFormat::LimeCompressed) => {
-            convert(&config.src, &config.dst, Format::AvmlCompressed)
-        }
-        (CliFormat::LimeCompressed, CliFormat::Lime) => {
-            convert(&config.src, &config.dst, Format::Lime)
-        }
-        (CliFormat::Raw, CliFormat::Lime) => {
-            convert_from_raw(&config.src, &config.dst, Format::Lime)
-        }
-        (CliFormat::Raw, CliFormat::LimeCompressed) => {
-            convert_from_raw(&config.src, &config.dst, Format::AvmlCompressed)
-        }
-        (CliFormat::Lime, CliFormat::Lime)
-        | (CliFormat::LimeCompressed, CliFormat::LimeCompressed)
-        | (CliFormat::Raw, CliFormat::Raw) => Err(Error::NoConversionRequired),
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::{convert_image, convert_to_raw_image, encode_raw_image};
+    use super::{convert_image, convert_to_raw_image, encode_raw_image};
     use avml::{Format, Result, image};
     use rand::{Rng as _, SeedableRng as _, rngs::SmallRng};
     use std::io::Cursor;

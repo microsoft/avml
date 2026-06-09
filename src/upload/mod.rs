@@ -4,6 +4,9 @@
 #[cfg(feature = "blobstore")]
 pub mod blobstore;
 
+#[cfg(feature = "blobstore")]
+pub mod stream;
+
 #[cfg(feature = "put")]
 pub mod http;
 

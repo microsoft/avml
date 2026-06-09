@@ -18,8 +18,5 @@ done
 cargo +stable build --release --no-default-features --target ${ARCH}-unknown-linux-musl --locked
 cp target/${ARCH}-unknown-linux-musl/release/avml target/${ARCH}-unknown-linux-musl/release/avml-minimal
 cargo +stable build --release --target ${ARCH}-unknown-linux-musl --locked
-cargo +stable build --release --target ${ARCH}-unknown-linux-musl --locked --bin avml-upload --features "put blobstore status"
 strip target/${ARCH}-unknown-linux-musl/release/avml
 strip target/${ARCH}-unknown-linux-musl/release/avml-minimal
-strip target/${ARCH}-unknown-linux-musl/release/avml-convert
-strip target/${ARCH}-unknown-linux-musl/release/avml-upload

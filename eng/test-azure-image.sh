@@ -45,6 +45,6 @@ IP=$(az vm create -g ${GROUP} --size ${SIZE} -n ${VM} --image ${SKU} --public-ip
 ssh-keygen -R ${IP} 2>/dev/null > /dev/null
 quiet scp -oStrictHostKeyChecking=no ${EXE} ${IP}:./avml
 quiet ssh -oStrictHostKeyChecking=no ${IP} sudo chmod +x avml
-quiet ssh -oStrictHostKeyChecking=no ${IP} sudo ./avml --compress /mnt/image.lime
+quiet ssh -oStrictHostKeyChecking=no ${IP} sudo ./avml acquire --compress /mnt/image.lime
 quiet ssh -oStrictHostKeyChecking=no ${IP} sudo chmod a+r /mnt/image.lime
 quiet scp -oStrictHostKeyChecking=no ${IP}:/mnt/image.lime ./${SKU}.lime
