@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 use avml::{Format, Result, Snapshot, Source, iomem};
+#[cfg(feature = "upload")]
+use clap::ArgGroup;
 use clap::Parser;
 #[cfg(feature = "upload")]
 use core::num::NonZeroUsize;
@@ -11,6 +13,15 @@ use std::path::PathBuf;
 use {avml::Error, tokio::fs::remove_file, url::Url};
 
 #[derive(Parser)]
+#[cfg_attr(
+    feature = "upload",
+    command(group(
+        ArgGroup::new("upload-destination")
+            .args(["url", "sas_url"])
+            .multiple(true)
+            .required(false),
+    ))
+)]
 pub struct Args {
     /// compress via snappy
     #[arg(long)]
@@ -35,7 +46,7 @@ pub struct Args {
 
     /// delete upon successful upload
     #[cfg(feature = "upload")]
-    #[arg(long)]
+    #[arg(long, requires = "upload-destination")]
     delete: bool,
 
     /// upload via Azure Blob Store upon acquisition
