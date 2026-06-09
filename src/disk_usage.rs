@@ -44,7 +44,7 @@ pub fn check(
 }
 
 fn check_max_usage(estimated: u64, max_disk_usage: NonZeroU64) -> Result<()> {
-    // convert to MB
+    // convert to MiB
     let allowed = max_disk_usage
         .get()
         .saturating_mul(1024)
