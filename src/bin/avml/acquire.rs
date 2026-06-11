@@ -28,9 +28,9 @@ pub struct Args {
     #[arg(long, value_parser = disk_usage_percentage)]
     max_disk_usage_percentage: Option<f64>,
 
-    /// upload via HTTP PUT upon acquisition
+    /// upload via HTTP PUT upon acquisition; mutually exclusive with --sas-url
     #[cfg(feature = "upload")]
-    #[arg(long)]
+    #[arg(long, conflicts_with = "sas_url")]
     url: Option<Url>,
 
     /// delete upon successful upload
@@ -38,7 +38,7 @@ pub struct Args {
     #[arg(long)]
     delete: bool,
 
-    /// upload via Azure Blob Store upon acquisition
+    /// upload via Azure Blob Store upon acquisition; mutually exclusive with --url
     #[cfg(feature = "upload")]
     #[arg(long)]
     sas_url: Option<Url>,
@@ -88,20 +88,18 @@ pub fn run(args: &Args) -> Result<()> {
 
 #[cfg(feature = "upload")]
 pub async fn upload_after_acquire(args: &Args) -> Result<()> {
-    let mut did_upload = false;
-
-    if let Some(ref url) = args.url {
+    let did_upload = if let Some(ref url) = args.url {
         avml::put(&args.filename, url).await?;
-        did_upload = true;
-    }
-
-    if let Some(ref sas_url) = args.sas_url {
+        true
+    } else if let Some(ref sas_url) = args.sas_url {
         let uploader = avml::BlobUploader::new(sas_url)?
             .block_size(args.sas_block_size)
             .concurrency(args.sas_block_concurrency);
         uploader.upload_file(&args.filename).await?;
-        did_upload = true;
-    }
+        true
+    } else {
+        false
+    };
 
     if did_upload && args.delete {
         remove_file(&args.filename)
