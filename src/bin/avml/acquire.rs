@@ -31,7 +31,7 @@ pub struct Args {
     #[arg(long, value_enum)]
     source: Option<Source>,
 
-    /// Specify the maximum estimated disk usage (in MB)
+    /// Specify the maximum estimated disk usage (in MiB)
     #[arg(long)]
     max_disk_usage: Option<NonZeroU64>,
 

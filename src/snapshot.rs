@@ -135,7 +135,7 @@ pub enum Source {
     /// disabled using the kernel configuration options `CONFIG_STRICT_DEVMEM`
     /// or `CONFIG_IO_STRICT_DEVMEM`.
     ///
-    /// With `CONFIG_STRICT_DEVMEM`, only the first 1MB of memory can be
+    /// With `CONFIG_STRICT_DEVMEM`, only the first 1MiB of memory can be
     /// accessed.
     #[value(name = "/dev/mem")]
     DevMem,
@@ -229,7 +229,7 @@ impl<'a> Snapshot<'a> {
         }
     }
 
-    /// Specify the maximum disk space in MB to use
+    /// Specify the maximum disk space in MiB to use
     ///
     /// This is an estimation, calculated at start time
     #[must_use]

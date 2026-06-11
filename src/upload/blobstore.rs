@@ -36,7 +36,7 @@ pub enum Error {
 
 type Result<T> = core::result::Result<T, Error>;
 
-const ONE_MB_NZ: NonZeroU64 = NonZeroU64::new(1024 * 1024).expect("ONE_MB must be non-zero");
+const ONE_MIB_NZ: NonZeroU64 = NonZeroU64::new(1024 * 1024).expect("ONE_MIB must be non-zero");
 
 /// Maximum number of blocks
 ///
@@ -47,7 +47,7 @@ const BLOB_MAX_BLOCKS: NonZeroU64 =
 /// Maximum size of any single block
 ///
 /// <https://docs.microsoft.com/en-us/azure/storage/blobs/scalability-targets#scale-targets-for-blob-storage>
-const BLOB_MAX_BLOCK_SIZE: NonZeroU64 = ONE_MB_NZ.saturating_mul(
+const BLOB_MAX_BLOCK_SIZE: NonZeroU64 = ONE_MIB_NZ.saturating_mul(
     NonZeroU64::new(4000).expect("blob max block size multiplier must be non-zero"),
 );
 
@@ -60,7 +60,7 @@ const BLOB_MAX_FILE_SIZE: NonZeroU64 = BLOB_MAX_BLOCKS.saturating_mul(BLOB_MAX_B
 /// blobs" feature on all storage accounts
 ///
 /// <https://azure.microsoft.com/en-us/blog/high-throughput-with-azure-blob-storage/>
-const BLOB_MIN_BLOCK_SIZE: NonZeroU64 = ONE_MB_NZ
+const BLOB_MIN_BLOCK_SIZE: NonZeroU64 = ONE_MIB_NZ
     .saturating_mul(NonZeroU64::new(5).expect("blob min block size multiplier must be non-zero"));
 
 /// Hard cap on concurrent upload tasks, applied after any caller-supplied or
@@ -84,8 +84,8 @@ const _: () = assert!(
     "DEFAULT_CONCURRENCY must not exceed MAX_CONCURRENCY",
 );
 
-/// Keep at most 500MB of block data in flight across all uploaders.
-const MEMORY_THRESHOLD: NonZeroU64 = ONE_MB_NZ
+/// Keep at most 500MiB of block data in flight across all uploaders.
+const MEMORY_THRESHOLD: NonZeroU64 = ONE_MIB_NZ
     .saturating_mul(NonZeroU64::new(500).expect("memory threshold multiplier must be non-zero"));
 
 fn calc_block_size(file_size: NonZeroU64, block_size: Option<NonZeroU64>) -> Result<NonZeroU64> {
@@ -149,7 +149,7 @@ fn upload_parameters(
     block_size: Option<NonZeroU64>,
     upload_concurrency: Option<NonZeroUsize>,
 ) -> Result<UploadPlan> {
-    let block_size = block_size.map(|x| x.saturating_mul(ONE_MB_NZ));
+    let block_size = block_size.map(|x| x.saturating_mul(ONE_MIB_NZ));
     calc_concurrency(file_size, block_size, upload_concurrency)
 }
 
@@ -260,7 +260,7 @@ impl BlobUploader {
         }
     }
 
-    /// Specify a positive block size in multiples of 1MB.
+    /// Specify a positive block size in multiples of 1MiB.
     #[must_use]
     pub fn block_size(self, block_size: Option<NonZeroU64>) -> Self {
         Self { block_size, ..self }
@@ -314,7 +314,7 @@ impl BlobUploader {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ONE_MB;
+    use crate::ONE_MIB;
     use futures::AsyncReadExt as _;
 
     fn non_zero(value: u64) -> Result<NonZeroU64> {
@@ -328,7 +328,7 @@ mod tests {
     fn bytes_from_mib(mebibytes: u64) -> Result<NonZeroU64> {
         non_zero(
             mebibytes
-                .checked_mul(u64::try_from(ONE_MB)?)
+                .checked_mul(u64::try_from(ONE_MIB)?)
                 .ok_or(Error::TooLarge)?,
         )
     }

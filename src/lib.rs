@@ -22,6 +22,9 @@ pub use crate::{
     snapshot::{Snapshot, Source},
 };
 
-pub const ONE_MB: usize = 1024 * 1024;
+pub const ONE_MIB: usize = 1024 * 1024;
+
+#[deprecated(since = "0.19.1", note = "use ONE_MIB instead")]
+pub const ONE_MB: usize = ONE_MIB;
 
 pub type Result<T> = core::result::Result<T, crate::errors::Error>;
