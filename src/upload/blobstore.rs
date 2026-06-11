@@ -240,8 +240,9 @@ impl BlobUploader {
     ///
     /// # Errors
     /// Propagates any error returned by
-    /// [`BlobClient::from_url`](azure_storage_blob::BlobClient::from_url),
-    /// for example if the URL shape is not supported by the Azure SDK.
+    /// [`BlobClient::new`](azure_storage_blob::BlobClient::new) when
+    /// constructing the client from `sas`, for example if the URL shape is not
+    /// supported by the Azure SDK.
     pub fn new(sas: &Url) -> Result<Self> {
         let blob_client = BlobClient::new(sas.clone(), None, None)?;
         Ok(Self::with_blob_client(blob_client))
