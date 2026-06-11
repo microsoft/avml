@@ -42,6 +42,9 @@ pub enum Error {
 
     #[error(transparent)]
     IntConversion(#[from] core::num::TryFromIntError),
+
+    #[error("invalid header range {range:?}: start must be strictly less than end")]
+    InvalidRange { range: Range<u64> },
 }
 
 type Result<T> = core::result::Result<T, Error>;
@@ -159,11 +162,12 @@ impl Header {
             return Err(Error::InvalidPadding);
         }
         let format = Format::from_wire(magic, version)?;
+        let range = Range { start, end };
+        if range.start >= range.end {
+            return Err(Error::InvalidRange { range });
+        }
 
-        Ok(Self {
-            range: Range { start, end },
-            format,
-        })
+        Ok(Self { range, format })
     }
 
     fn encode(&self) -> [u8; HEADER_LEN] {
@@ -182,11 +186,18 @@ impl Header {
     /// Writes the header to the destination writer.
     ///
     /// # Errors
-    /// Returns an error if the header cannot be written to the destination.
+    /// Returns an error if:
+    /// - The header range is empty or inverted (`start >= end`)
+    /// - The header cannot be written to the destination
     pub fn write<W>(&self, mut dst: W) -> Result<()>
     where
         W: Write,
     {
+        if self.range.start >= self.range.end {
+            return Err(Error::InvalidRange {
+                range: self.range.clone(),
+            });
+        }
         let bytes = self.encode();
         dst.write_all(&bytes).map_err(|source| Error::Io {
             context: "unable to write header",
@@ -566,5 +577,47 @@ mod tests {
         }
 
         Ok(())
+    }
+
+    #[test]
+    fn write_rejects_empty_or_inverted_ranges() {
+        for range in [
+            Range { start: 0, end: 0 },
+            Range { start: 5, end: 5 },
+            Range { start: 5, end: 3 },
+        ] {
+            let header = super::Header {
+                range: range.clone(),
+                format: Format::Lime,
+            };
+            let mut buf = Vec::new();
+            let result = header.write(&mut buf);
+            assert!(
+                matches!(&result, Err(super::Error::InvalidRange { range: r }) if *r == range),
+                "got: {result:?}"
+            );
+            assert!(buf.is_empty(), "no bytes written on InvalidRange");
+        }
+    }
+
+    #[test]
+    fn read_rejects_inverted_wire_ranges() {
+        // Build a valid encoded header, then stomp the stored last_byte
+        // field with a value below `start` to simulate corruption.
+        let valid = super::Header {
+            range: Range {
+                start: 100,
+                end: 200,
+            },
+            format: Format::Lime,
+        };
+        let mut bytes = valid.encode();
+        bytes[16..24].copy_from_slice(&50_u64.to_le_bytes()); // last_byte < start
+
+        let result = super::Header::read(Cursor::new(bytes.as_ref()));
+        assert!(
+            matches!(&result, Err(super::Error::InvalidRange { .. })),
+            "got: {result:?}"
+        );
     }
 }
