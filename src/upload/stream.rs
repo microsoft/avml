@@ -562,8 +562,20 @@ mod tests {
     )]
 
     use super::*;
-    use core::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Mutex as StdMutex;
+    use crate::{
+        image::{Format, Header, Image, MAX_BLOCK_SIZE},
+        snapshot::{Snapshot, Source},
+    };
+    use core::{
+        ops::Range,
+        sync::atomic::{AtomicUsize, Ordering},
+    };
+    use std::{
+        fs,
+        io::{Cursor, Read as _, Seek as _, SeekFrom},
+        path::Path,
+        sync::Mutex as StdMutex,
+    };
 
     /// In-memory `BlockStager` used by tests. Records every staged block
     /// and every commit call. Optionally fails a specific block index.
@@ -697,6 +709,234 @@ mod tests {
         })
         .await
         .expect("spawn_blocking join")
+    }
+
+    struct SnapshotFixture {
+        _dir: tempfile::TempDir,
+        source_path: std::path::PathBuf,
+        payload: Vec<u8>,
+        memory_ranges: Vec<Range<u64>>,
+        expected_ranges: Vec<Range<u64>>,
+    }
+
+    impl SnapshotFixture {
+        fn new() -> Self {
+            let max_block_size =
+                usize::try_from(MAX_BLOCK_SIZE).expect("MAX_BLOCK_SIZE fits usize");
+            let first_range_end = max_block_size
+                .checked_add(8_192)
+                .expect("test size fits usize");
+            let zero_range_end = first_range_end
+                .checked_add(8_192)
+                .expect("test size fits usize");
+            let tail_range_end = zero_range_end
+                .checked_add(12_345)
+                .expect("test size fits usize");
+
+            let mut payload = vec![0; tail_range_end];
+            fill_nonzero(&mut payload, 0..first_range_end);
+            fill_nonzero(&mut payload, zero_range_end..tail_range_end);
+
+            let dir = tempfile::TempDir::new_in(env!("CARGO_MANIFEST_DIR"))
+                .expect("create workspace-local temp dir");
+            let source_path = dir.path().join("raw-memory.bin");
+            fs::write(&source_path, &payload).expect("write raw memory fixture");
+
+            let max_block_size = u64::try_from(max_block_size).expect("test size fits u64");
+            let first_range_end = u64::try_from(first_range_end).expect("test size fits u64");
+            let zero_range_end = u64::try_from(zero_range_end).expect("test size fits u64");
+            let tail_range_end = u64::try_from(tail_range_end).expect("test size fits u64");
+
+            Self {
+                _dir: dir,
+                source_path,
+                payload,
+                memory_ranges: vec![
+                    0..first_range_end,
+                    first_range_end..zero_range_end,
+                    zero_range_end..tail_range_end,
+                ],
+                expected_ranges: vec![
+                    0..max_block_size,
+                    max_block_size..first_range_end,
+                    zero_range_end..tail_range_end,
+                ],
+            }
+        }
+    }
+
+    fn fill_nonzero(payload: &mut [u8], range: Range<usize>) {
+        let slice = payload
+            .get_mut(range)
+            .expect("test range lies within payload");
+        for (idx, byte) in slice.iter_mut().enumerate() {
+            let value = u8::try_from(idx % 251)
+                .expect("modulo constrains byte")
+                .saturating_add(1);
+            *byte = value;
+        }
+    }
+
+    fn committed_stream(stager: &FakeStager, blob_block_size: usize) -> Vec<u8> {
+        let staged = stager.locked_staged();
+        let commits = stager.locked_commits();
+        assert_eq!(commits.len(), 1, "commit called exactly once");
+
+        let committed_ids = &commits[0];
+        let mut sorted_committed_ids = committed_ids.clone();
+        sorted_committed_ids.sort();
+        assert_eq!(
+            committed_ids, &sorted_committed_ids,
+            "committed block ids are sorted ascending"
+        );
+
+        let mut staged_ids: Vec<Vec<u8>> = staged.iter().map(|entry| entry.0.clone()).collect();
+        staged_ids.sort();
+        assert_eq!(
+            committed_ids, &staged_ids,
+            "commit includes every staged block id"
+        );
+
+        let mut bytes = Vec::new();
+        for id in committed_ids {
+            let entry = staged
+                .iter()
+                .find(|entry| &entry.0 == id)
+                .expect("committed id was staged");
+            bytes.extend_from_slice(&entry.1);
+        }
+
+        let expected_blocks = bytes.len().div_ceil(blob_block_size);
+        assert_eq!(
+            staged.len(),
+            expected_blocks,
+            "staged blocks cover exactly the committed byte stream"
+        );
+        let last_len = committed_ids
+            .last()
+            .and_then(|id| staged.iter().find(|entry| &entry.0 == id))
+            .map(|entry| entry.1.len())
+            .expect("snapshot stages at least one block");
+        assert!(
+            last_len < blob_block_size,
+            "trailing partial block is staged on shutdown"
+        );
+
+        bytes
+    }
+
+    fn read_headers(encoded: &[u8], expected_format: Format) -> Vec<Range<u64>> {
+        let mut cursor = Cursor::new(encoded);
+        let encoded_len = u64::try_from(encoded.len()).expect("encoded length fits u64");
+        let mut ranges = Vec::new();
+        while cursor
+            .stream_position()
+            .expect("read stream position")
+            .lt(&encoded_len)
+        {
+            let header = Header::read(&mut cursor).expect("snapshot header parses");
+            assert_eq!(header.format, expected_format);
+            let size = i64::try_from(header.size().expect("header size fits usize"))
+                .expect("header size fits i64");
+            ranges.push(header.range.clone());
+            match header.format {
+                Format::Lime => {
+                    cursor
+                        .seek(SeekFrom::Current(size))
+                        .expect("seek past LiME payload");
+                }
+                Format::AvmlCompressed => {
+                    let mut decoder = snap::read::FrameDecoder::new(&mut cursor)
+                        .take(u64::try_from(size).expect("positive header size fits u64"));
+                    std::io::copy(&mut decoder, &mut std::io::sink())
+                        .expect("compressed payload decodes");
+                    cursor
+                        .seek(SeekFrom::Current(8))
+                        .expect("seek past compressed byte count");
+                }
+            }
+        }
+        ranges
+    }
+
+    fn convert_to_lime(encoded: &[u8]) -> Vec<u8> {
+        let encoded_len = u64::try_from(encoded.len()).expect("encoded length fits u64");
+        let mut image =
+            Image::from_streams(Format::Lime, Cursor::new(encoded), Cursor::new(Vec::new()));
+        while image
+            .src
+            .stream_position()
+            .expect("read stream position")
+            .lt(&encoded_len)
+        {
+            image.convert_block().expect("convert block to LiME");
+        }
+        image.dst.into_inner()
+    }
+
+    fn assert_lime_payload_matches(lime: &[u8], expected_ranges: &[Range<u64>], payload: &[u8]) {
+        let mut cursor = Cursor::new(lime);
+        let lime_len = u64::try_from(lime.len()).expect("LiME length fits u64");
+        let mut actual_ranges = Vec::new();
+        while cursor
+            .stream_position()
+            .expect("read stream position")
+            .lt(&lime_len)
+        {
+            let header = Header::read(&mut cursor).expect("LiME header parses");
+            assert_eq!(header.format, Format::Lime);
+            let size = header.size().expect("header size fits usize");
+            let mut block = vec![0; size];
+            cursor.read_exact(&mut block).expect("read LiME payload");
+            let start = usize::try_from(header.range.start).expect("range start fits usize");
+            let end = usize::try_from(header.range.end).expect("range end fits usize");
+            assert_eq!(
+                block,
+                payload.get(start..end).expect("range lies within payload")
+            );
+            actual_ranges.push(header.range);
+        }
+        assert_eq!(actual_ranges, expected_ranges);
+    }
+
+    async fn assert_snapshot_streams_end_to_end(format: Format) {
+        let fixture = SnapshotFixture::new();
+        let stager = Arc::new(FakeStager::new());
+        let blob_block_size = 1_000_000;
+        let stream = build_stream(stager.clone(), blob_block_size, 4);
+
+        let source_path = fixture.source_path.clone();
+        let memory_ranges = fixture.memory_ranges.clone();
+        let (stream, result) = run_write(stream, move |writer| {
+            Snapshot::new(
+                Path::new("unused-streaming-test-destination"),
+                memory_ranges,
+            )
+            .source(Some(Source::Raw(source_path)))
+            .format(format)
+            .create_to_writer(writer)
+            .map_err(|err| std::io::Error::other(err.to_string()))
+        })
+        .await;
+        result.expect("snapshot writes and shuts down blob stream");
+        stream.finalize().await.expect("finalize commits blocks");
+
+        let reconstructed = committed_stream(&stager, blob_block_size);
+        assert_eq!(
+            read_headers(&reconstructed, format),
+            fixture.expected_ranges,
+            "headers preserve non-zero ranges and elide zero-only ranges"
+        );
+        let lime = convert_to_lime(&reconstructed);
+        assert_lime_payload_matches(&lime, &fixture.expected_ranges, &fixture.payload);
+    }
+
+    // This lives beside BlockBlobStream's unit tests so it can inject the
+    // crate-private in-memory stager without expanding the public API.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn snapshot_streams_end_to_end_through_blob_stager() {
+        assert_snapshot_streams_end_to_end(Format::Lime).await;
+        assert_snapshot_streams_end_to_end(Format::AvmlCompressed).await;
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
