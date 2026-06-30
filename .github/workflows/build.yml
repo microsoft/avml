@@ -73,6 +73,36 @@ jobs:
         path: |
           target/*/release/avml
           target/*/release/avml-minimal
+  armv6b:
+    permissions:
+        contents: read
+    runs-on: ubuntu-latest
+    env:
+      TARGET: arm-unknown-linux-musleabihf
+    steps:
+    - uses: actions/checkout@v7.0.0
+    - uses: Swatinem/rust-cache@baf1a810e98b6a3001d0d7234864ed75a17c42fb # v2
+    - uses: baptiste0928/cargo-install@f204293d9709061b7bc1756fec3ec4e2cd57dec0 # v3.4.0
+      with:
+        crate: cross
+        locked: true
+    - name: install binutils
+      run: sudo apt-get update && sudo apt-get install --no-install-recommends --yes binutils-arm-linux-gnueabihf
+    - name: build
+      run: |
+        cross build --release --no-default-features --target "$TARGET" --locked
+        cp "target/$TARGET/release/avml" "target/$TARGET/release/avml-minimal"
+        cross build --release --target "$TARGET" --locked
+        arm-linux-gnueabihf-strip "target/$TARGET/release/avml"
+        arm-linux-gnueabihf-strip "target/$TARGET/release/avml-minimal"
+        arm-linux-gnueabihf-readelf -A "target/$TARGET/release/avml" | grep 'Tag_CPU_arch: v6'
+    - name: upload artifacts
+      uses: actions/upload-artifact@v7.0.1
+      with:
+        name: linux-armv6b-artifacts
+        path: |
+          target/arm-unknown-linux-musleabihf/release/avml
+          target/arm-unknown-linux-musleabihf/release/avml-minimal
   windows:
     permissions:
         contents: read
