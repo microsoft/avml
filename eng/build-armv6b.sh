@@ -15,11 +15,12 @@ BUILD_OUTPUT_DIR="${BUILD_OUTPUT_DIR:-target/${TARGET_NAME}/release}"
 ARTIFACT_DIR="${ARTIFACT_DIR:-target/armeb-unknown-linux-musleabi/release}"
 CARGO_TOOLCHAIN="${CARGO_TOOLCHAIN:-nightly}"
 CROSS_COMPILE="${CROSS_COMPILE:-armeb-linux-musleabi-}"
-MUSL_TOOLCHAIN_URL="${MUSL_TOOLCHAIN_URL:-https://musl.cc/armeb-linux-musleabi-cross.tgz}"
-MUSL_TOOLCHAIN_FALLBACK_URL="${MUSL_TOOLCHAIN_FALLBACK_URL:-https://github.com/musl-cc/musl.cc/releases/download/v0.0.1/armeb-linux-musleabi-cross.tgz}"
-MUSL_TOOLCHAIN_SHA256="${MUSL_TOOLCHAIN_SHA256:-5d508e9566e088d5ee7b008bc5a6c56ca87fb604af165922a912e034dca82ae6}"
-MUSL_TOOLCHAIN_ARCHIVE="${MUSL_TOOLCHAIN_ARCHIVE:-}"
 MUSL_TOOLCHAIN_DIR="${MUSL_TOOLCHAIN_DIR:-${HOME}/.cache/avml/armeb-linux-musleabi-cross}"
+MUSL_CROSS_MAKE_REV="${MUSL_CROSS_MAKE_REV:-227df8b99103f9c59f6570babf892978e293082f}"
+MUSL_CROSS_MAKE_URL="${MUSL_CROSS_MAKE_URL:-https://github.com/richfelker/musl-cross-make/archive/${MUSL_CROSS_MAKE_REV}.tar.gz}"
+MUSL_CROSS_MAKE_SHA256="${MUSL_CROSS_MAKE_SHA256:-bb3fc7851088e1e5e1274ee56a0ab6ae176043d160fdf0b71027934b091f208a}"
+MUSL_CROSS_MAKE_ARCHIVE="${MUSL_CROSS_MAKE_ARCHIVE:-}"
+MUSL_CROSS_MAKE_DIR="${MUSL_CROSS_MAKE_DIR:-${HOME}/.cache/avml/musl-cross-make-${MUSL_CROSS_MAKE_REV}}"
 BUILD_TOOLS_DIR="${BUILD_TOOLS_DIR:-target/armv6b-build-tools}"
 if [[ "$BUILD_TOOLS_DIR" != /* ]]; then
     BUILD_TOOLS_DIR="$(pwd)/${BUILD_TOOLS_DIR}"
@@ -57,6 +58,8 @@ ensure_host_tools() {
     command -v python3 >/dev/null 2>&1 || packages+=("python3")
     command -v sha256sum >/dev/null 2>&1 || packages+=("coreutils")
     command -v gcc >/dev/null 2>&1 || packages+=("build-essential")
+    command -v bzip2 >/dev/null 2>&1 || packages+=("bzip2")
+    command -v xz >/dev/null 2>&1 || packages+=("xz-utils")
 
     if [[ "${#packages[@]}" -gt 0 ]]; then
         if command -v apt-get >/dev/null 2>&1; then
@@ -73,37 +76,68 @@ ensure_rust_toolchain() {
     rustup toolchain install "$CARGO_TOOLCHAIN" --profile minimal --component rust-src
 }
 
-ensure_musl_toolchain() {
-    local archive="${BUILD_TOOLS_DIR}/armeb-linux-musleabi-cross.tgz"
-    local urls=("$MUSL_TOOLCHAIN_URL" "$MUSL_TOOLCHAIN_FALLBACK_URL")
+verify_sha256() {
+    local archive="$1"
+    local expected_sha256="$2"
 
+    if ! echo "${expected_sha256}  ${archive}" | sha256sum --check --status; then
+        echo "${archive}: SHA-256 verification failed; expected ${expected_sha256}" >&2
+        exit 1
+    fi
+}
+
+download_verified() {
+    local url="$1"
+    local archive="$2"
+    local expected_sha256="$3"
+
+    curl --fail --show-error --location --retry 5 --retry-delay 10 \
+        --output "$archive" "$url"
+    verify_sha256 "$archive" "$expected_sha256"
+}
+
+ensure_source_musl_toolchain() {
+    local archive="${BUILD_TOOLS_DIR}/musl-cross-make-${MUSL_CROSS_MAKE_REV}.tar.gz"
+
+    mkdir -p "$BUILD_TOOLS_DIR" "$MUSL_CROSS_MAKE_DIR"
+    if [[ -n "$MUSL_CROSS_MAKE_ARCHIVE" ]]; then
+        archive="$MUSL_CROSS_MAKE_ARCHIVE"
+        verify_sha256 "$archive" "$MUSL_CROSS_MAKE_SHA256"
+    elif [[ ! -f "$archive" ]]; then
+        download_verified "$MUSL_CROSS_MAKE_URL" "$archive" "$MUSL_CROSS_MAKE_SHA256"
+    else
+        verify_sha256 "$archive" "$MUSL_CROSS_MAKE_SHA256"
+    fi
+
+    if [[ ! -f "${MUSL_CROSS_MAKE_DIR}/Makefile" ]]; then
+        rm -rf "$MUSL_CROSS_MAKE_DIR"
+        mkdir -p "$MUSL_CROSS_MAKE_DIR"
+        tar --extract --gzip --directory "$MUSL_CROSS_MAKE_DIR" --strip-components=1 \
+            --file "$archive"
+    fi
+
+    cat > "${MUSL_CROSS_MAKE_DIR}/config.mak" <<EOF
+TARGET = armeb-linux-musleabi
+OUTPUT = ${MUSL_TOOLCHAIN_DIR}
+DL_CMD = curl -C - -L -o
+COMMON_CONFIG += CFLAGS="-g0 -Os" CXXFLAGS="-g0 -Os" LDFLAGS="-s"
+COMMON_CONFIG += --disable-nls --with-debug-prefix-map=\$(CURDIR)=
+GCC_CONFIG += --with-arch=armv5te --with-float=soft
+GCC_CONFIG += --disable-libquadmath --disable-decimal-float --disable-libitm
+GCC_CONFIG += --disable-fixed-point --disable-lto --enable-languages=c,c++
+EOF
+
+    make -C "$MUSL_CROSS_MAKE_DIR"
+    make -C "$MUSL_CROSS_MAKE_DIR" install
+}
+
+ensure_musl_toolchain() {
     if command -v "${CROSS_COMPILE}gcc" >/dev/null 2>&1; then
         return
     fi
 
     if [[ ! -x "${MUSL_TOOLCHAIN_DIR}/bin/armeb-linux-musleabi-gcc" ]]; then
-        mkdir -p "$BUILD_TOOLS_DIR" "$MUSL_TOOLCHAIN_DIR"
-        if [[ -n "$MUSL_TOOLCHAIN_ARCHIVE" ]]; then
-            archive="$MUSL_TOOLCHAIN_ARCHIVE"
-        else
-            for url in "${urls[@]}"; do
-                if curl --fail --show-error --location --retry 5 --retry-delay 10 \
-                    --output "$archive" "$url"; then
-                    break
-                fi
-            done
-        fi
-        if [[ ! -f "$archive" ]]; then
-            echo "Unable to download ${MUSL_TOOLCHAIN_URL} or ${MUSL_TOOLCHAIN_FALLBACK_URL}" >&2
-            exit 1
-        fi
-        if ! echo "${MUSL_TOOLCHAIN_SHA256}  ${archive}" | sha256sum --check --status; then
-            echo "${archive}: SHA-256 verification failed; expected ${MUSL_TOOLCHAIN_SHA256}" >&2
-            exit 1
-        fi
-        gzip --test "$archive"
-        tar --extract --gzip --directory "$MUSL_TOOLCHAIN_DIR" --strip-components=1 \
-            --file "$archive"
+        ensure_source_musl_toolchain
     fi
 
     CROSS_COMPILE="${MUSL_TOOLCHAIN_DIR}/bin/armeb-linux-musleabi-"
@@ -195,15 +229,24 @@ EOF
 }
 
 write_linker_wrapper() {
+    local gcc_lib_dir
+    local libgcc_eh
+
+    gcc_lib_dir="$(dirname "$("${CROSS_COMPILE}gcc" -print-libgcc-file-name)")"
+    libgcc_eh="${gcc_lib_dir}/libgcc_eh.a"
+
     cat > "${BUILD_TOOLS_DIR}/armeb-ld-wrapper.sh" <<EOF
 #!/usr/bin/bash
 set -euo pipefail
 
 compat_object="${BUILD_TOOLS_DIR}/musl_compat.o"
+libgcc_eh="${libgcc_eh}"
 args=()
+compile_only=0
 for arg in "\$@"; do
     case "\$arg" in
         "\$compat_object") ;;
+        -c|-S|-E) compile_only=1; args+=("\$arg") ;;
         -fuse-ld=lld) ;;
         -B*/gcc-ld) ;;
         -Wl,-Bdynamic) args+=("-Wl,-Bstatic") ;;
@@ -211,6 +254,14 @@ for arg in "\$@"; do
         *) args+=("\$arg") ;;
     esac
 done
+
+if [[ "\$compile_only" -eq 1 ]]; then
+    exec "${CROSS_COMPILE}gcc" "\${args[@]}"
+fi
+
+if [[ -f "\$libgcc_eh" ]]; then
+    exec "${CROSS_COMPILE}gcc" "\$compat_object" "\${args[@]}" "\$libgcc_eh"
+fi
 
 exec "${CROSS_COMPILE}gcc" "\$compat_object" "\${args[@]}"
 EOF
