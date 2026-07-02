@@ -1,0 +1,41 @@
+{
+  "abi": "eabi",
+  "arch": "arm",
+  "crt-static-respected": true,
+  "data-layout": "E-m:e-p:32:32-Fi8-i64:64-v128:64:128-a:0:32-n32-S64",
+  "default-uwtable": true,
+  "dynamic-linking": true,
+  "env": "musl",
+  "features": "+strict-align,+v5te,+no-movt",
+  "has-rpath": true,
+  "has-thread-local": true,
+  "link-self-contained": {
+    "components": [
+      "linker"
+    ]
+  },
+  "linker-flavor": "gnu-lld-cc",
+  "llvm-floatabi": "soft",
+  "llvm-mcount-intrinsic": "llvm.arm.gnu.eabi.mcount",
+  "llvm-target": "armeb-unknown-linux-gnueabi",
+  "max-atomic-width": 32,
+  "metadata": {
+    "description": "ARMv5TE big-endian BE32, soft-float, no movw/movt for BE32 kernels on ARM1176-class hardware",
+    "host_tools": null,
+    "std": true,
+    "tier": 3
+  },
+  "os": "linux",
+  "position-independent-executables": true,
+  "relro-level": "full",
+  "supported-split-debuginfo": [
+    "packed",
+    "unpacked",
+    "off"
+  ],
+  "target-endian": "big",
+  "target-family": [
+    "unix"
+  ],
+  "target-pointer-width": 32
+}
