@@ -5,9 +5,10 @@
 #
 
 set -euo pipefail
-set -x
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../"
+
+VERBOSE="${VERBOSE:-0}"
 
 TARGET_NAME="${TARGET_NAME:-armv5te-unknown-linux-musleabi}"
 TARGET="${TARGET:-eng/targets/${TARGET_NAME}.json}"
@@ -25,8 +26,34 @@ BUILD_TOOLS_DIR="${BUILD_TOOLS_DIR:-target/armv6b-build-tools}"
 if [[ "$BUILD_TOOLS_DIR" != /* ]]; then
     BUILD_TOOLS_DIR="$(pwd)/${BUILD_TOOLS_DIR}"
 fi
+BUILD_LOG="${BUILD_LOG:-${BUILD_TOOLS_DIR}/build.log}"
 TARGET_ENV="${TARGET_NAME//-/_}"
 TARGET_ENV="${TARGET_ENV^^}"
+MUSL_CROSS_MAKE_DL_CMD="curl --fail --show-error --location --continue-at - --output"
+
+mkdir -p "$(dirname "$BUILD_LOG")"
+: > "$BUILD_LOG"
+exec 3>&2
+
+on_exit() {
+    local status=$?
+
+    if [[ "$status" -ne 0 ]]; then
+        echo "==> Build failed; full log follows: ${BUILD_LOG}" >&3
+        cat "$BUILD_LOG" >&3
+    fi
+}
+trap on_exit EXIT
+exec >"$BUILD_LOG" 2>&1
+
+if [[ "$VERBOSE" == "1" ]]; then
+    set -x
+fi
+
+log() {
+    echo "==> $*" >&3
+    echo "==> $*" >&2
+}
 
 require_command() {
     local command_name="$1"
@@ -45,6 +72,7 @@ install_apt_packages() {
     fi
 
     require_command sudo
+    log "Installing missing host packages: ${missing_packages[*]}"
     sudo apt-get update
     sudo apt-get install --no-install-recommends --yes "${missing_packages[@]}"
 }
@@ -73,6 +101,7 @@ ensure_host_tools() {
 
 ensure_rust_toolchain() {
     require_command rustup
+    log "Ensuring Rust toolchain ${CARGO_TOOLCHAIN} is installed"
     rustup toolchain install "$CARGO_TOOLCHAIN" --profile minimal --component rust-src
 }
 
@@ -91,6 +120,7 @@ download_verified() {
     local archive="$2"
     local expected_sha256="$3"
 
+    log "Downloading musl-cross-make"
     curl --fail --show-error --location --retry 5 --retry-delay 10 \
         --output "$archive" "$url"
     verify_sha256 "$archive" "$expected_sha256"
@@ -110,6 +140,7 @@ ensure_source_musl_toolchain() {
     fi
 
     if [[ ! -f "${MUSL_CROSS_MAKE_DIR}/Makefile" ]]; then
+        log "Extracting musl-cross-make"
         rm -rf "$MUSL_CROSS_MAKE_DIR"
         mkdir -p "$MUSL_CROSS_MAKE_DIR"
         tar --extract --gzip --directory "$MUSL_CROSS_MAKE_DIR" --strip-components=1 \
@@ -119,7 +150,7 @@ ensure_source_musl_toolchain() {
     cat > "${MUSL_CROSS_MAKE_DIR}/config.mak" <<EOF
 TARGET = armeb-linux-musleabi
 OUTPUT = ${MUSL_TOOLCHAIN_DIR}
-DL_CMD = curl -C - -L -o
+DL_CMD = ${MUSL_CROSS_MAKE_DL_CMD}
 COMMON_CONFIG += CFLAGS="-g0 -Os" CXXFLAGS="-g0 -Os" LDFLAGS="-s"
 COMMON_CONFIG += --disable-nls --with-debug-prefix-map=\$(CURDIR)=
 GCC_CONFIG += --with-arch=armv5te --with-float=soft
@@ -127,6 +158,7 @@ GCC_CONFIG += --disable-libquadmath --disable-decimal-float --disable-libitm
 GCC_CONFIG += --disable-fixed-point --disable-lto --enable-languages=c,c++
 EOF
 
+    log "Building musl cross toolchain"
     make -C "$MUSL_CROSS_MAKE_DIR"
     make -C "$MUSL_CROSS_MAKE_DIR" install
 }
@@ -318,12 +350,12 @@ PY
 verify_legacy_armv6b() {
     local binary="$1"
 
-    "${READELF}" -h "$binary" | grep "Data:.*big endian"
-    "${READELF}" -h "$binary" | grep "Type:.*EXEC"
-    "${READELF}" -h "$binary" | grep "Flags:.*Version4 EABI"
-    ! "${READELF}" -h "$binary" | grep "BE8"
-    ! "${READELF}" -l "$binary" | grep "INTERP"
-    "${READELF}" -A "$binary" | grep "Tag_CPU_arch: v5TE"
+    "${READELF}" -h "$binary" | grep -q "Data:.*big endian"
+    "${READELF}" -h "$binary" | grep -q "Type:.*EXEC"
+    "${READELF}" -h "$binary" | grep -q "Flags:.*Version4 EABI"
+    ! "${READELF}" -h "$binary" | grep -q "BE8"
+    ! "${READELF}" -l "$binary" | grep -q "INTERP"
+    "${READELF}" -A "$binary" | grep -q "Tag_CPU_arch: v5TE"
 }
 
 ensure_host_tools
@@ -345,13 +377,16 @@ export "RANLIB_${TARGET_NAME//-/_}=${CROSS_COMPILE}ranlib"
 export OPENSSL_STATIC="${OPENSSL_STATIC:-1}"
 export RUSTFLAGS="${RUSTFLAGS} -C linker=${LINKER}"
 
+log "Building minimal avml for ${TARGET_NAME}"
 "${CARGO[@]}" build "${BUILD_STD_ARGS[@]}" --release --no-default-features --target "$TARGET" --locked
 mkdir -p "$ARTIFACT_DIR"
 cp "${BUILD_OUTPUT_DIR}/avml" "${ARTIFACT_DIR}/avml-minimal"
+log "Building default avml for ${TARGET_NAME}"
 "${CARGO[@]}" build "${BUILD_STD_ARGS[@]}" --release --target "$TARGET" --locked
 cp "${BUILD_OUTPUT_DIR}/avml" "${ARTIFACT_DIR}/avml"
 
 for binary in "${ARTIFACT_DIR}/avml" "${ARTIFACT_DIR}/avml-minimal"; do
+    log "Verifying ${binary}"
     "${STRIP}" "$binary"
     patch_arm_eabi4 "$binary"
     verify_legacy_armv6b "$binary"
