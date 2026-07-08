@@ -80,6 +80,13 @@ jobs:
     steps:
     - uses: actions/checkout@v7.0.0
     - uses: Swatinem/rust-cache@baf1a810e98b6a3001d0d7234864ed75a17c42fb # v2
+    - name: Cache armv6b build chain
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/avml/armeb-linux-musleabi-cross
+          ~/.cache/avml/musl-cross-make-227df8b99103f9c59f6570babf892978e293082f
+        key: armv6b-build-chain-${{ runner.os }}-${{ hashFiles('eng/build-armv6b.sh') }}
     - name: build
       run: |
         eng/build-armv6b.sh
