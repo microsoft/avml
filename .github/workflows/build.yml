@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v7.0.0
-    - uses: Swatinem/rust-cache@baf1a810e98b6a3001d0d7234864ed75a17c42fb # v2
+    - uses: Swatinem/rust-cache@7e35be21c2b94d972b1143087fabc27d7dc881ef # v2
     - uses: baptiste0928/cargo-install@f204293d9709061b7bc1756fec3ec4e2cd57dec0 # v3.4.0
       with:
         crate: typos-cli
@@ -36,14 +36,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v7.0.0
-    - uses: Swatinem/rust-cache@baf1a810e98b6a3001d0d7234864ed75a17c42fb # v2
+    - uses: Swatinem/rust-cache@7e35be21c2b94d972b1143087fabc27d7dc881ef # v2
     - name: test
       run: cargo test --all-features --locked
   x64:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v7.0.0
-    - uses: Swatinem/rust-cache@baf1a810e98b6a3001d0d7234864ed75a17c42fb # v2
+    - uses: Swatinem/rust-cache@7e35be21c2b94d972b1143087fabc27d7dc881ef # v2
     - name: build
       run: eng/ci.sh
     - name: Run tests
@@ -61,7 +61,7 @@ jobs:
     runs-on: ubuntu-22.04-arm
     steps:
     - uses: actions/checkout@v7.0.0
-    - uses: Swatinem/rust-cache@baf1a810e98b6a3001d0d7234864ed75a17c42fb # v2
+    - uses: Swatinem/rust-cache@7e35be21c2b94d972b1143087fabc27d7dc881ef # v2
     - name: build
       run: eng/ci.sh
     - name: Run tests
@@ -100,7 +100,7 @@ jobs:
         git config --global core.autocrlf false
         git config --global core.eol lf
     - uses: actions/checkout@v7.0.0
-    - uses: Swatinem/rust-cache@baf1a810e98b6a3001d0d7234864ed75a17c42fb # v2
+    - uses: Swatinem/rust-cache@7e35be21c2b94d972b1143087fabc27d7dc881ef # v2
     - name: build avml
       run: cargo build --release --bin avml --locked
     - name: Run tests
