@@ -73,6 +73,23 @@ jobs:
         path: |
           target/*/release/avml
           target/*/release/avml-minimal
+  armv6b:
+    permissions:
+        contents: read
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7.0.0
+    - uses: Swatinem/rust-cache@baf1a810e98b6a3001d0d7234864ed75a17c42fb # v2
+    - name: build
+      run: |
+        eng/build-armv6b.sh
+    - name: upload artifacts
+      uses: actions/upload-artifact@v7.0.1
+      with:
+        name: linux-armv6b-artifacts
+        path: |
+          target/armeb-unknown-linux-musleabi/release/avml
+          target/armeb-unknown-linux-musleabi/release/avml-minimal
   windows:
     permissions:
         contents: read
