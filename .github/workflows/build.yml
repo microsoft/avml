@@ -81,7 +81,7 @@ jobs:
     - uses: actions/checkout@v7.0.0
     - uses: Swatinem/rust-cache@baf1a810e98b6a3001d0d7234864ed75a17c42fb # v2
     - name: Cache armv6b build chain
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: |
           ~/.cache/avml/armeb-linux-musleabi-cross
