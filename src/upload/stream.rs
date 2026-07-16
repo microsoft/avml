@@ -572,7 +572,7 @@ mod tests {
     };
     use std::{
         fs,
-        io::{Cursor, Read as _, Seek as _, SeekFrom},
+        io::{Cursor, Read as _, Seek as _, SeekFrom, copy},
         path::Path,
         sync::Mutex as StdMutex,
     };
@@ -848,8 +848,7 @@ mod tests {
                 Format::AvmlCompressed => {
                     let mut decoder = snap::read::FrameDecoder::new(&mut cursor)
                         .take(u64::try_from(size).expect("positive header size fits u64"));
-                    std::io::copy(&mut decoder, &mut std::io::sink())
-                        .expect("compressed payload decodes");
+                    copy(&mut decoder, &mut Vec::new()).expect("compressed payload decodes");
                     cursor
                         .seek(SeekFrom::Current(8))
                         .expect("seek past compressed byte count");

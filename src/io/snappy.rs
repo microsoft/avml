@@ -23,12 +23,8 @@ impl<W: Write> SnapCountWriter<W> {
             .into_inner()
             .map_err(snap::write::IntoInnerError::into_error)?;
 
-        let count = u64::try_from(inner.count()).map_err(|_| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "unable to convert compressed length to u64",
-            )
-        })?;
+        let count = u64::try_from(inner.count())
+            .map_err(|_| std::io::Error::other("unable to convert compressed length to u64"))?;
         let mut handle = inner.into_inner();
         handle.write_all(&count.to_le_bytes())?;
 
@@ -67,19 +63,11 @@ mod tests {
 
         let compressed_len = compressed_data.split_off(compressed_data.len() - 8);
         let compressed_len = u64::from_le_bytes(compressed_len.try_into().map_err(|_| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "unable to convert compressed length to u64",
-            )
+            std::io::Error::other("compressed length trailer must contain exactly 8 bytes")
         })?);
         assert_eq!(
             compressed_len,
-            u64::try_from(compressed_data.len()).map_err(|_| {
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "unable to convert compressed length to u64",
-                )
-            })?
+            u64::try_from(compressed_data.len()).map_err(std::io::Error::other)?
         );
 
         assert_ne!(compressed_data, many_a);
