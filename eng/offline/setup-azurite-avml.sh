@@ -1,5 +1,10 @@
 #!/bin/bash
-set -e
+#
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+#
+
+set -euo pipefail
 
 usage() {
     echo "Usage: $(basename "$0") <azurite-host> [port]"
