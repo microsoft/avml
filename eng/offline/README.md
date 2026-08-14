@@ -1,7 +1,7 @@
 # AVML with Azurite Blob Storage
 
 Use Azurite as a local Azure Blob Storage endpoint for streaming AVML memory images in
-unreliable networks. This demonstrates this approach by runing Azurite, creating an `avml`
+unreliable networks. This demonstrates this approach by running Azurite, creating an `avml`
 container and SAS URL, streaming a memory image directly from AVML, and downloading the
 completed blob.
 
