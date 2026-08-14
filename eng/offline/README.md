@@ -11,7 +11,7 @@ Linux, Node.js 24, and Azure CLI
 
 ## 1. Build Azurite
 
-The following will build a linux executable version of Azurite.
+The following will build a Linux executable version of Azurite.
 
 ```bash
 git clone --branch v3.36.0 https://github.com/Azure/Azurite.git
