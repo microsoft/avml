@@ -21,7 +21,7 @@ jobs:
         contents: read
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v7.0.1
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - uses: Swatinem/rust-cache@258712b0b7b1ddf8bddc9fc3b0faca682b2736c3 # v2
     - uses: baptiste0928/cargo-install@f204293d9709061b7bc1756fec3ec4e2cd57dec0 # v3.4.0
       with:
@@ -38,21 +38,21 @@ jobs:
         contents: read
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v7.0.1
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - uses: Swatinem/rust-cache@258712b0b7b1ddf8bddc9fc3b0faca682b2736c3 # v2
     - name: test
       run: cargo test --all-features --locked
   x64:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v7.0.1
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - uses: Swatinem/rust-cache@258712b0b7b1ddf8bddc9fc3b0faca682b2736c3 # v2
     - name: build
       run: eng/ci.sh
     - name: Run tests
       run: sudo target/x86_64-unknown-linux-musl/release/avml acquire --compress output.lime
     - name: upload artifacts
-      uses: actions/upload-artifact@v7.0.1
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: linux-x86-64-artifacts
         path: |
@@ -63,14 +63,14 @@ jobs:
         contents: read
     runs-on: ubuntu-22.04-arm
     steps:
-    - uses: actions/checkout@v7.0.1
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - uses: Swatinem/rust-cache@258712b0b7b1ddf8bddc9fc3b0faca682b2736c3 # v2
     - name: build
       run: eng/ci.sh
     - name: Run tests
       run: sudo target/aarch64-unknown-linux-musl/release/avml acquire --compress output.lime
     - name: upload artifacts
-      uses: actions/upload-artifact@v7.0.1
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: linux-aarch64-artifacts
         path: |
@@ -81,10 +81,10 @@ jobs:
         contents: read
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v7.0.1
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - uses: Swatinem/rust-cache@258712b0b7b1ddf8bddc9fc3b0faca682b2736c3 # v2
     - name: Cache armv6b build chain
-      uses: actions/cache@v6
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
           ~/.cache/avml/armeb-linux-musleabi-cross
@@ -94,7 +94,7 @@ jobs:
       run: |
         eng/build-armv6b.sh
     - name: upload artifacts
-      uses: actions/upload-artifact@v7.0.1
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: linux-armv6b-artifacts
         path: |
@@ -109,14 +109,14 @@ jobs:
       run: |
         git config --global core.autocrlf false
         git config --global core.eol lf
-    - uses: actions/checkout@v7.0.1
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - uses: Swatinem/rust-cache@258712b0b7b1ddf8bddc9fc3b0faca682b2736c3 # v2
     - name: build avml
       run: cargo build --release --bin avml --locked
     - name: Run tests
       run: cargo test
     - name: upload artifacts
-      uses: actions/upload-artifact@v7.0.1
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: windows-artifacts
         path: |
