@@ -8,7 +8,7 @@ use core::{
     num::{NonZeroU64, NonZeroUsize},
     ops::Range,
 };
-use std::path::PathBuf;
+use std::{io::Write as _, path::PathBuf};
 use tokio_util::io::SyncIoBridge;
 use url::Url;
 
@@ -22,6 +22,11 @@ pub enum Commands {
     /// The destination is opened with a single `connect`; on connection
     /// failure mid-stream the snapshot aborts without retry.
     Tcp(TcpArgs),
+
+    /// Stream directly to standard output (e.g. `avml stream stdout | pv > snapshot.lime`).
+    ///
+    /// The memory source is probed once at start; on failure mid-stream the snapshot aborts.
+    Stdout(StdoutArgs),
 }
 
 #[derive(Parser)]
@@ -66,10 +71,24 @@ pub struct TcpArgs {
     addr: String,
 }
 
+#[derive(Parser)]
+pub struct StdoutArgs {
+    /// compress via snappy
+    #[arg(long)]
+    compress: bool,
+
+    /// specify input source. If unset, the source is probed once at
+    /// start (kcore, then /dev/crash, then /dev/mem); the choice cannot
+    /// be changed once any bytes have been written.
+    #[arg(long, value_enum)]
+    source: Option<Source>,
+}
+
 pub async fn run(cmd: Commands) -> Result<()> {
     match cmd {
         Commands::Blob(args) => stream_blob(args).await,
         Commands::Tcp(args) => stream_tcp(args).await,
+        Commands::Stdout(args) => stream_stdout(args).await,
     }
 }
 
@@ -209,3 +228,37 @@ async fn stream_tcp(args: TcpArgs) -> Result<()> {
         source: std::io::Error::other(e.to_string()),
     })?
 }
+
+async fn stream_stdout(args: StdoutArgs) -> Result<()> {
+    let ranges = iomem::parse()?;
+    let format = Format::from(args.compress);
+    let source = match args.source {
+        Some(s) => s,
+        None => Snapshot::probe_single_source().map_err(avml::Error::from)?,
+    };
+
+    tokio::task::spawn_blocking(move || -> Result<()> {
+        // Snapshot::create_to_writer never inspects `destination`;
+        // any in-scope path satisfies the &Path borrow.
+        let dummy = PathBuf::from("/dev/null");
+        let snapshot = Snapshot::new(&dummy, ranges)
+            .source(Some(source))
+            .format(format);
+        let stdout = std::io::stdout();
+        let mut handle = stdout.lock();
+        snapshot
+            .create_to_writer(&mut handle)
+            .map_err(avml::Error::from)?;
+        handle.flush().map_err(|io_err| avml::Error::Io {
+            context: "unable to flush stdout",
+            source: io_err,
+        })?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| avml::Error::Io {
+        context: "spawn_blocking join failed",
+        source: std::io::Error::other(e.to_string()),
+    })?
+}
+

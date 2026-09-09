@@ -121,6 +121,17 @@ connection drops mid-stream, the snapshot aborts; there is no resume.
 No TLS — pair with an SSH tunnel or stunnel for confidentiality and
 integrity if needed.
 
+### To standard output (stdout)
+
+```
+avml stream stdout [--compress] [--source SOURCE]
+```
+
+Writes the snapshot sequentially to standard output. Useful for streaming
+over an SSH session (`ssh root@target 'avml stream stdout --compress' > snapshot.lime`)
+or piping directly into other tools without touching local disk or opening network
+ports.
+
 ## Uploading a previously-captured snapshot
 
 ```

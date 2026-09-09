@@ -9,3 +9,11 @@
 
 # any freta analysis cache files
 *.cache
+
+# Python cache and bytecode
+__pycache__/
+*.py[cod]
+
+# Generated symbol tables and memory dumps
+linux-kernel-*.json
+*.mem
