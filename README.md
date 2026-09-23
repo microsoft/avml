@@ -4,10 +4,14 @@
 
 *A portable volatile memory acquisition tool for Linux.*
 
-AVML is an X86\_64 userland volatile memory acquisition tool written in
+AVML is a Linux userland volatile memory acquisition tool written in
 [Rust](https://www.rust-lang.org/), intended to be deployed as a static binary.
 AVML can be used to acquire memory without knowing the target OS distribution
 or kernel a priori.  No on-target compilation or fingerprinting is needed.
+
+Release builds are produced for x86-64, AArch64, ARMv7 little-endian hard-float,
+and legacy ARMv6-compatible big-endian systems. ARMv7 acquisition currently
+assumes 4096-byte memory pages.
 
 ## Features
 * Save recorded images to external locations via Azure Blob Store or HTTP PUT
@@ -196,6 +200,12 @@ Run `avml <COMMAND> --help` for per-command options.
 
     # Build without upload functionality
     cargo build --release --target x86_64-unknown-linux-musl --no-default-features
+
+ARMv7 hard-float artifacts require an ARM musl cross-toolchain. The repository
+build script creates the pinned toolchain and builds both full and minimal
+static binaries:
+
+    eng/build-armv7.sh
 
 # Testing on Azure
 
