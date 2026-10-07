@@ -20,4 +20,4 @@ trap cleanup EXIT
 
 xargs -P 20 -a ${IMAGES_TXT} -I test-image-name eng/test-azure-image.sh ${FILE} test-image-name
 
-eng/test-conversion.sh
+eng/test-conversion.sh ${IMAGES_TXT} ${FILE}

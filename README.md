@@ -25,12 +25,17 @@ If the memory source is not specified on the commandline, AVML will iterate over
 > NOTE: If the kernel feature [kernel\_lockdown](https://man7.org/linux/man-pages/man7/kernel_lockdown.7.html) is enabled, AVML will not be able to acquire memory.
 
 ## Tested Distributions
-* Ubuntu: 12.04, 14.04, 16.04, 18.04, 18.10, 19.04, 19.10, 20.04, 21.04, 22.04
-* Centos: 6.5, 6.6, 6.7, 6.8, 6.9, 6.10, 7.0, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.9
-* RHEL: 6.7, 6.8, 6.9, 7.0, 7.2, 7.3, 7.4, 7.5, 7.7, 8.5, 9.0
-* Debian: 8, 9, 10, 11, 12
-* Oracle Linux: 6.8, 6.9, 6.10, 7.3, 7.4, 7.5, 7.6, 7.9, 8.5, 9.0
-* [CBL-Mariner](https://github.com/microsoft/CBL-Mariner): 1.0, 2.0
+The Azure VM test matrix is defined in [`eng/images.txt`](eng/images.txt) and currently covers:
+
+* Ubuntu: 16.04, 18.04, 20.04, 22.04, 24.04, 26.04
+* CentOS: 7.9
+* RHEL: 7.9, 8.5, 8.10, 9.0, 9.8, 10.2
+* Debian: 11, 12, 13
+* Oracle Linux: 8.10, 9.8, 10.2
+* [CBL-Mariner](https://github.com/microsoft/CBL-Mariner): 2.0
+* [Azure Linux](https://github.com/microsoft/azurelinux): 3.0
+* SUSE Linux Enterprise Server: 12 SP5, 15 SP7, 16.0
+* AlmaLinux: 8, 9, 10
 
 ## Subcommands
 
