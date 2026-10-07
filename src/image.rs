@@ -573,7 +573,8 @@ mod tests {
             let dst = Cursor::new(vec![]);
             let mut image = Image::from_streams(format, src, dst);
             image.copy_block(0..0x4000)?;
-            assert!(image.dst.get_ref().is_empty());
+            let expected: &[u8] = &[];
+            assert_eq!(image.dst.get_ref().as_slice(), expected);
         }
 
         Ok(())
