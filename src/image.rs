@@ -534,7 +534,7 @@ fn open_src(src_filename: &Path) -> Result<(File, bool)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Format, Header, Image};
+    use super::{Format, HEADER_LEN, Header, Image, PAGE_SIZE};
     use core::ops::Range;
     use std::io::Cursor;
 
@@ -577,6 +577,24 @@ mod tests {
             assert_eq!(image.dst.get_ref().as_slice(), expected);
         }
 
+        Ok(())
+    }
+
+    #[test]
+    fn aligned_source_preserves_final_byte() -> super::Result<()> {
+        let mut page = vec![0_u8; PAGE_SIZE];
+        if let Some(last) = page.last_mut() {
+            *last = 0xa5;
+        }
+        let mut image =
+            Image::from_streams(Format::Lime, Cursor::new(page), Cursor::new(Vec::new()));
+        image.align_src = true;
+
+        image.copy_block(0..0x1000)?;
+
+        let output = image.dst.into_inner();
+        assert_eq!(output.len(), HEADER_LEN + PAGE_SIZE);
+        assert_eq!(output.last(), Some(&0xa5));
         Ok(())
     }
 
