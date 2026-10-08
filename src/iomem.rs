@@ -181,7 +181,8 @@ mod tests {
                         source: io_error
                     }) if io_error.kind() == ErrorKind::UnexpectedEof
                 ));
-                assert!(image.dst.get_ref().is_empty());
+                let expected: &[u8] = &[];
+                assert_eq!(image.dst.get_ref().as_slice(), expected);
                 continue;
             }
 
