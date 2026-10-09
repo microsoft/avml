@@ -597,6 +597,30 @@ mod tests {
         assert_eq!(result, expected);
     }
 
+    #[test]
+    fn source_blocks_preserve_exclusive_range_end() {
+        let range = 0x1000..0x2000;
+        let ranges = std::slice::from_ref(&range);
+        let expected = vec![Block {
+            offset: 0x1000,
+            range: 0x1000..0x2000,
+        }];
+
+        assert_eq!(
+            Snapshot::phys_blocks(Path::new("/dev/mem"), ranges),
+            expected
+        );
+        assert_eq!(
+            Snapshot::phys_blocks(Path::new("/dev/crash"), ranges),
+            expected
+        );
+        assert_eq!(
+            Snapshot::phys_blocks(Path::new("/tmp/memory.raw"), ranges),
+            expected
+        );
+        assert_eq!(Snapshot::find_kcore_blocks(ranges, &expected), expected);
+    }
+
     fn fake_phdr(p_type: u32, p_paddr: u64, p_memsz: u64, p_offset: u64) -> ProgramHeader {
         ProgramHeader {
             p_type,
