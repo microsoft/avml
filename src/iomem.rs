@@ -167,7 +167,11 @@ mod tests {
 
         for source_size in [4095_usize, 4096, 4097] {
             let mut source_file = tempfile::NamedTempFile::new()?;
-            source_file.write_all(&vec![0x5a; source_size])?;
+            let source = (0_u8..=u8::MAX)
+                .cycle()
+                .take(source_size)
+                .collect::<Vec<_>>();
+            source_file.write_all(&source)?;
             let mut image =
                 Image::from_streams(Format::Lime, source_file.reopen()?, Cursor::new(Vec::new()));
             image.align_src = true;
@@ -190,8 +194,8 @@ mod tests {
             assert_eq!(image.src.stream_position()?, 4096);
             let output = image.dst.into_inner();
             assert_eq!(output.len(), 32 + 4096);
-            assert_eq!(output.last(), Some(&0x5a));
             assert_eq!(Header::read(Cursor::new(&output))?.range, 0..4096);
+            assert_eq!(output.get(32..), source.get(..4096));
         }
 
         Ok(())
