@@ -172,30 +172,41 @@ mod tests {
                 .take(source_size)
                 .collect::<Vec<_>>();
             source_file.write_all(&source)?;
-            let mut image =
-                Image::from_streams(Format::Lime, source_file.reopen()?, Cursor::new(Vec::new()));
-            image.align_src = true;
+            for format in [Format::Lime, Format::AvmlCompressed] {
+                let mut image =
+                    Image::from_streams(format, source_file.reopen()?, Cursor::new(Vec::new()));
+                image.align_src = true;
 
-            let result = image.copy_block(ranges.first().ok_or("missing range")?.clone());
-            if source_size == 4095 {
-                assert!(matches!(
-                    result,
-                    Err(ImageError::Io {
-                        context: "unable to read memory page",
-                        source: io_error
-                    }) if io_error.kind() == ErrorKind::UnexpectedEof
-                ));
-                let expected: &[u8] = &[];
-                assert_eq!(image.dst.get_ref().as_slice(), expected);
-                continue;
+                let result = image.copy_block(ranges.first().ok_or("missing range")?.clone());
+                if source_size == 4095 {
+                    assert!(matches!(
+                        result,
+                        Err(ImageError::Io {
+                            context: "unable to read memory page",
+                            source: io_error
+                        }) if io_error.kind() == ErrorKind::UnexpectedEof
+                    ));
+                    let expected: &[u8] = &[];
+                    assert_eq!(image.dst.get_ref().as_slice(), expected);
+                    continue;
+                }
+
+                result?;
+                assert_eq!(image.src.stream_position()?, 4096);
+                let mut output = image.dst.into_inner();
+                if format == Format::AvmlCompressed {
+                    let mut converter = Image::from_streams(
+                        Format::Lime,
+                        Cursor::new(output),
+                        Cursor::new(Vec::new()),
+                    );
+                    converter.convert_block()?;
+                    output = converter.dst.into_inner();
+                }
+                assert_eq!(output.len(), 32 + 4096);
+                assert_eq!(Header::read(Cursor::new(&output))?.range, 0..4096);
+                assert_eq!(output.get(32..), source.get(..4096));
             }
-
-            result?;
-            assert_eq!(image.src.stream_position()?, 4096);
-            let output = image.dst.into_inner();
-            assert_eq!(output.len(), 32 + 4096);
-            assert_eq!(Header::read(Cursor::new(&output))?.range, 0..4096);
-            assert_eq!(output.get(32..), source.get(..4096));
         }
 
         Ok(())
