@@ -251,10 +251,19 @@ where
         }
     } else {
         let mut src = src.take(size.try_into()?);
-        std::io::copy(&mut src, &mut dst).map_err(|source| Error::Io {
+        let copied = std::io::copy(&mut src, &mut dst).map_err(|source| Error::Io {
             context: "unable to copy memory pages",
             source,
         })?;
+        if copied != u64::try_from(size)? {
+            return Err(Error::Io {
+                context: "unable to copy memory pages",
+                source: std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "source ended before the requested memory range was read",
+                ),
+            });
+        }
     }
     Ok(())
 }
@@ -534,9 +543,9 @@ fn open_src(src_filename: &Path) -> Result<(File, bool)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Format, HEADER_LEN, Header, Image, PAGE_SIZE};
+    use super::{Error, Format, HEADER_LEN, Header, Image, PAGE_SIZE};
     use core::ops::Range;
-    use std::io::Cursor;
+    use std::io::{Cursor, ErrorKind};
 
     #[test]
     fn encode_header_lime() {
@@ -638,5 +647,31 @@ mod tests {
             matches!(&result, Err(super::Error::InvalidRange { .. })),
             "got: {result:?}"
         );
+    }
+    #[test]
+    fn lime_conversion_rejects_short_payload() -> super::Result<()> {
+        for format in [Format::Lime, Format::AvmlCompressed] {
+            for source_size in [0, 4095, 4096] {
+                let mut source = Vec::new();
+                Header {
+                    range: 0..4096,
+                    format: Format::Lime,
+                }
+                .write(&mut source)?;
+                source.extend(vec![0x5a; source_size]);
+                let mut image =
+                    Image::from_streams(format, Cursor::new(source), Cursor::new(Vec::new()));
+                let result = image.convert_block();
+                if source_size < 4096 {
+                    assert!(matches!(result, Err(Error::Io { source: io_error, .. })
+                        if io_error.kind() == ErrorKind::UnexpectedEof));
+                    assert_eq!(image.dst.get_ref().len(), 0);
+                } else {
+                    result?;
+                    assert_ne!(image.dst.get_ref().as_slice(), []);
+                }
+            }
+        }
+        Ok(())
     }
 }
