@@ -206,7 +206,13 @@ where
     let expected = u64::from_le_bytes(bytes);
     let actual = compressed_end.saturating_sub(compressed_start);
     if expected != actual {
-        return Err(image::Error::InvalidCompressedLength { expected, actual });
+        return Err(image::Error::Io {
+            context: "invalid compressed block length",
+            source: std::io::Error::new(
+                ErrorKind::InvalidData,
+                format!("trailer declares {expected} bytes, but {actual} bytes were consumed"),
+            ),
+        });
     }
     Ok(())
 }
@@ -325,6 +331,14 @@ mod tests {
         )
     }
 
+    fn is_invalid_data(result: &Result<Vec<u8>>) -> bool {
+        matches!(
+            result,
+            Err(Error::Image(image::Error::Io { source, .. }))
+                if source.kind() == ErrorKind::InvalidData
+        )
+    }
+
     fn compressed_with_range(raw: &[u8], range_end: u64) -> Result<Vec<u8>> {
         let mut encoded = encode_raw(raw, Format::AvmlCompressed)?;
         encoded
@@ -426,14 +440,8 @@ mod tests {
             })?
             .copy_from_slice(&0_u64.to_le_bytes());
 
-        assert!(matches!(
-            convert_encoded(&encoded, Format::Lime),
-            Err(Error::Image(image::Error::InvalidCompressedLength { .. }))
-        ));
-        assert!(matches!(
-            decode_to_raw(&encoded),
-            Err(Error::Image(image::Error::InvalidCompressedLength { .. }))
-        ));
+        assert!(is_invalid_data(&convert_encoded(&encoded, Format::Lime)));
+        assert!(is_invalid_data(&decode_to_raw(&encoded)));
         Ok(())
     }
 }

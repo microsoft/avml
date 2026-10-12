@@ -33,11 +33,6 @@ pub enum Error {
     #[error("unsupported format")]
     UnsupportedFormat,
 
-    #[error(
-        "invalid compressed length: trailer declares {expected} bytes, but {actual} bytes were consumed"
-    )]
-    InvalidCompressedLength { expected: u64, actual: u64 },
-
     #[error("write block failed: {range:?}")]
     WriteBlock {
         range: Range<u64>,
@@ -532,7 +527,15 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
                         source,
                     })?;
                 if expected != actual {
-                    return Err(Error::InvalidCompressedLength { expected, actual });
+                    return Err(Error::Io {
+                        context: "invalid compressed block length",
+                        source: std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            format!(
+                                "trailer declares {expected} bytes, but {actual} bytes were consumed"
+                            ),
+                        ),
+                    });
                 }
             }
         }
@@ -700,7 +703,8 @@ mod tests {
                     assert_eq!(image.dst.get_ref().len(), 0);
                 } else {
                     result?;
-                    assert_ne!(image.dst.get_ref().as_slice(), []);
+                    let empty: &[u8] = &[];
+                    assert_ne!(image.dst.get_ref().as_slice(), empty);
                 }
             }
         }
