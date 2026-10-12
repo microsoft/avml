@@ -6,7 +6,7 @@ use clap::{Parser, ValueEnum};
 use snap::read::FrameDecoder;
 use std::{
     fs::{File, metadata},
-    io::{Read, Seek, SeekFrom, Write, copy, repeat},
+    io::{ErrorKind, Read, Seek, Write, copy, repeat},
     path::{Path, PathBuf},
 };
 
@@ -126,31 +126,88 @@ where
 
         match header.format {
             Format::Lime => {
-                let mut handle =
-                    (&mut image.src).take(size.try_into().map_err(image::Error::IntConversion)?);
-                copy(&mut handle, &mut image.dst).map_err(|source| image::Error::Io {
-                    context: "unable to copy image data",
-                    source,
-                })?;
+                copy_exact(
+                    size.try_into().map_err(image::Error::IntConversion)?,
+                    &mut image.src,
+                    &mut image.dst,
+                    "unable to copy image data",
+                )?;
             }
             Format::AvmlCompressed => {
-                let mut decoder = FrameDecoder::new(&mut image.src)
-                    .take(size.try_into().map_err(image::Error::IntConversion)?);
-                copy(&mut decoder, &mut image.dst).map_err(|source| image::Error::Io {
-                    context: "unable to copy image data",
-                    source,
-                })?;
-                image
-                    .src
-                    .seek(SeekFrom::Current(8))
-                    .map_err(|source| image::Error::Io {
-                        context: "unable to seek past the compressed size",
-                        source,
-                    })?;
+                let compressed_start =
+                    image
+                        .src
+                        .stream_position()
+                        .map_err(|source| image::Error::Io {
+                            context: "unable to get compressed block offset",
+                            source,
+                        })?;
+                let decoder = FrameDecoder::new(&mut image.src);
+                copy_exact(
+                    size.try_into().map_err(image::Error::IntConversion)?,
+                    decoder,
+                    &mut image.dst,
+                    "unable to copy image data",
+                )?;
+                let compressed_end =
+                    image
+                        .src
+                        .stream_position()
+                        .map_err(|source| image::Error::Io {
+                            context: "unable to get compressed block length",
+                            source,
+                        })?;
+                validate_compressed_length(&mut image.src, compressed_start, compressed_end)?;
             }
         }
     }
 
+    Ok(())
+}
+
+fn copy_exact<R, W>(
+    size: u64,
+    src: R,
+    mut dst: W,
+    context: &'static str,
+) -> core::result::Result<(), image::Error>
+where
+    R: Read,
+    W: Write,
+{
+    let copied = copy(&mut src.take(size), &mut dst)
+        .map_err(|source| image::Error::Io { context, source })?;
+    if copied != size {
+        return Err(image::Error::Io {
+            context,
+            source: std::io::Error::new(
+                ErrorKind::UnexpectedEof,
+                "source ended before the requested memory range was read",
+            ),
+        });
+    }
+    Ok(())
+}
+
+fn validate_compressed_length<R>(
+    src: &mut R,
+    compressed_start: u64,
+    compressed_end: u64,
+) -> core::result::Result<(), image::Error>
+where
+    R: Read,
+{
+    let mut bytes = [0_u8; 8];
+    src.read_exact(&mut bytes)
+        .map_err(|source| image::Error::Io {
+            context: "unable to read compressed block length",
+            source,
+        })?;
+    let expected = u64::from_le_bytes(bytes);
+    let actual = compressed_end.saturating_sub(compressed_start);
+    if expected != actual {
+        return Err(image::Error::InvalidCompressedLength { expected, actual });
+    }
     Ok(())
 }
 
@@ -194,9 +251,9 @@ fn convert_from_raw(src: &Path, dst: &Path, format: Format) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{convert_image, convert_to_raw_image, encode_raw_image};
-    use avml::{Format, Result, image};
+    use avml::{Error, Format, Result, image};
     use rand::{Rng as _, SeedableRng as _, rngs::SmallRng};
-    use std::io::Cursor;
+    use std::io::{Cursor, ErrorKind};
 
     fn memory_image(format: Format, src: &[u8]) -> image::Image<Cursor<&[u8]>, Cursor<Vec<u8>>> {
         image::Image::from_streams(format, Cursor::new(src), Cursor::new(Vec::new()))
@@ -260,6 +317,30 @@ mod tests {
         Ok(image::Header::read(Cursor::new(encoded))?.format)
     }
 
+    fn is_unexpected_eof(result: &Result<Vec<u8>>) -> bool {
+        matches!(
+            result,
+            Err(Error::Image(image::Error::Io { source, .. }))
+                if source.kind() == ErrorKind::UnexpectedEof
+        )
+    }
+
+    fn compressed_with_range(raw: &[u8], range_end: u64) -> Result<Vec<u8>> {
+        let mut encoded = encode_raw(raw, Format::AvmlCompressed)?;
+        encoded
+            .get_mut(16..24)
+            .ok_or_else(|| image::Error::Io {
+                context: "encoded header is incomplete",
+                source: std::io::Error::other("missing encoded header bytes"),
+            })?
+            .copy_from_slice(&range_end.saturating_sub(1).to_le_bytes());
+        Ok(encoded)
+    }
+
+    fn remove_compressed_length(encoded: &mut Vec<u8>) {
+        encoded.truncate(encoded.len().saturating_sub(8));
+    }
+
     #[test]
     fn convert_sparse_raw_between_lime_and_compressed_formats() -> Result<()> {
         let raw = build_sparse_raw()?;
@@ -296,6 +377,63 @@ mod tests {
         assert_eq!(decode_to_raw(&compressed)?, expected_raw);
         assert_eq!(decode_to_raw(&lime_roundtrip)?, expected_raw);
 
+        Ok(())
+    }
+
+    #[test]
+    fn raw_conversion_rejects_short_lime_payload() -> Result<()> {
+        let mut encoded = Vec::new();
+        image::Header {
+            range: 0..4096,
+            format: Format::Lime,
+        }
+        .write(&mut encoded)?;
+        encoded.extend(vec![0x5a; 4095]);
+
+        assert!(is_unexpected_eof(&decode_to_raw(&encoded)));
+        Ok(())
+    }
+
+    #[test]
+    fn conversions_reject_short_compressed_payload_without_length() -> Result<()> {
+        let mut encoded = compressed_with_range(&vec![0x5a; 4095], 4096)?;
+        remove_compressed_length(&mut encoded);
+
+        assert!(is_unexpected_eof(&convert_encoded(&encoded, Format::Lime)));
+        assert!(is_unexpected_eof(&decode_to_raw(&encoded)));
+        Ok(())
+    }
+
+    #[test]
+    fn conversions_require_compressed_length() -> Result<()> {
+        let mut encoded = compressed_with_range(&vec![0x5a; 4096], 4096)?;
+        remove_compressed_length(&mut encoded);
+
+        assert!(is_unexpected_eof(&convert_encoded(&encoded, Format::Lime)));
+        assert!(is_unexpected_eof(&decode_to_raw(&encoded)));
+        Ok(())
+    }
+
+    #[test]
+    fn conversions_validate_compressed_length() -> Result<()> {
+        let mut encoded = compressed_with_range(&vec![0x5a; 4096], 4096)?;
+        let trailer_start = encoded.len().saturating_sub(8);
+        encoded
+            .get_mut(trailer_start..)
+            .ok_or_else(|| image::Error::Io {
+                context: "compressed length is missing",
+                source: std::io::Error::other("missing compressed length bytes"),
+            })?
+            .copy_from_slice(&0_u64.to_le_bytes());
+
+        assert!(matches!(
+            convert_encoded(&encoded, Format::Lime),
+            Err(Error::Image(image::Error::InvalidCompressedLength { .. }))
+        ));
+        assert!(matches!(
+            decode_to_raw(&encoded),
+            Err(Error::Image(image::Error::InvalidCompressedLength { .. }))
+        ));
         Ok(())
     }
 }
