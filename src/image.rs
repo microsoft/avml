@@ -250,11 +250,31 @@ where
             })?;
         }
     } else {
-        let mut src = src.take(size.try_into()?);
-        std::io::copy(&mut src, &mut dst).map_err(|source| Error::Io {
-            context: "unable to copy memory pages",
-            source,
-        })?;
+        copy_exact(
+            size.try_into()?,
+            &mut src,
+            &mut dst,
+            "unable to copy memory pages",
+        )?;
+    }
+    Ok(())
+}
+
+fn copy_exact<R, W>(size: u64, src: R, mut dst: W, context: &'static str) -> Result<()>
+where
+    R: Read,
+    W: Write,
+{
+    let copied = std::io::copy(&mut src.take(size), &mut dst)
+        .map_err(|source| Error::Io { context, source })?;
+    if copied != size {
+        return Err(Error::Io {
+            context,
+            source: std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "source ended before the requested memory range was read",
+            ),
+        });
     }
     Ok(())
 }
@@ -480,20 +500,43 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
             }
             Format::AvmlCompressed => {
                 self.write_header(header.range.clone())?;
+                let compressed_start = self.src.stream_position().map_err(|source| Error::Io {
+                    context: "unable to get compressed block offset",
+                    source,
+                })?;
                 {
                     let size = range_len(header.range.clone());
-                    let mut decoder = FrameDecoder::new(&mut self.src).take(size);
-                    std::io::copy(&mut decoder, &mut self.dst).map_err(|source| Error::Io {
-                        context: "unable to copy compressed data",
-                        source,
-                    })?;
+                    let decoder = FrameDecoder::new(&mut self.src);
+                    copy_exact(
+                        size,
+                        decoder,
+                        &mut self.dst,
+                        "unable to copy compressed data",
+                    )?;
                 }
-                self.src
-                    .seek(SeekFrom::Current(8))
+                let compressed_end = self.src.stream_position().map_err(|source| Error::Io {
+                    context: "unable to get compressed block length",
+                    source,
+                })?;
+                let actual = compressed_end.saturating_sub(compressed_start);
+                let expected = self
+                    .src
+                    .read_u64::<LittleEndian>()
                     .map_err(|source| Error::Io {
-                        context: "unable to seek passed compressed len",
+                        context: "unable to read compressed block length",
                         source,
                     })?;
+                if expected != actual {
+                    return Err(Error::Io {
+                        context: "invalid compressed block length",
+                        source: std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            format!(
+                                "trailer declares {expected} bytes, but {actual} bytes were consumed"
+                            ),
+                        ),
+                    });
+                }
             }
         }
 
@@ -534,9 +577,9 @@ fn open_src(src_filename: &Path) -> Result<(File, bool)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Format, HEADER_LEN, Header, Image, PAGE_SIZE};
+    use super::{Error, Format, HEADER_LEN, Header, Image, PAGE_SIZE};
     use core::ops::Range;
-    use std::io::Cursor;
+    use std::io::{Cursor, ErrorKind};
 
     #[test]
     fn encode_header_lime() {
@@ -638,5 +681,33 @@ mod tests {
             matches!(&result, Err(super::Error::InvalidRange { .. })),
             "got: {result:?}"
         );
+    }
+
+    #[test]
+    fn lime_conversion_rejects_short_payload() -> super::Result<()> {
+        for format in [Format::Lime, Format::AvmlCompressed] {
+            for source_size in [0, 4095, 4096] {
+                let mut source = Vec::new();
+                Header {
+                    range: 0..4096,
+                    format: Format::Lime,
+                }
+                .write(&mut source)?;
+                source.extend(vec![0x5a; source_size]);
+                let mut image =
+                    Image::from_streams(format, Cursor::new(source), Cursor::new(Vec::new()));
+                let result = image.convert_block();
+                if source_size < 4096 {
+                    assert!(matches!(result, Err(Error::Io { source: io_error, .. })
+                        if io_error.kind() == ErrorKind::UnexpectedEof));
+                    assert_eq!(image.dst.get_ref().len(), 0);
+                } else {
+                    result?;
+                    let empty: &[u8] = &[];
+                    assert_ne!(image.dst.get_ref().as_slice(), empty);
+                }
+            }
+        }
+        Ok(())
     }
 }
