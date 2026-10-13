@@ -76,6 +76,29 @@ jobs:
         path: |
           target/*/release/avml
           target/*/release/avml-minimal
+  armv7:
+    permissions:
+        contents: read
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7.0.1
+    - uses: Swatinem/rust-cache@a45951ff880207c249adf57334cf2e9bd81d6e1e # v2
+    - name: Cache ARMv7 build chain
+      uses: actions/cache@v6
+      with:
+        path: |
+          ~/.cache/avml/arm-linux-musleabihf-cross
+          ~/.cache/avml/musl-cross-make-armv7-227df8b99103f9c59f6570babf892978e293082f
+        key: armv7-build-chain-${{ runner.os }}-${{ hashFiles('eng/build-armv7.sh', 'eng/musl-cross-common.sh') }}
+    - name: build
+      run: eng/build-armv7.sh
+    - name: upload artifacts
+      uses: actions/upload-artifact@v7.0.1
+      with:
+        name: linux-armv7-artifacts
+        path: |
+          target/armv7-unknown-linux-musleabihf/release/avml
+          target/armv7-unknown-linux-musleabihf/release/avml-minimal
   armv6b:
     permissions:
         contents: read
@@ -89,7 +112,7 @@ jobs:
         path: |
           ~/.cache/avml/armeb-linux-musleabi-cross
           ~/.cache/avml/musl-cross-make-227df8b99103f9c59f6570babf892978e293082f
-        key: armv6b-build-chain-${{ runner.os }}-${{ hashFiles('eng/build-armv6b.sh') }}
+        key: armv6b-build-chain-${{ runner.os }}-${{ hashFiles('eng/build-armv6b.sh', 'eng/musl-cross-common.sh') }}
     - name: build
       run: |
         eng/build-armv6b.sh
