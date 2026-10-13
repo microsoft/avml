@@ -308,7 +308,7 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
         OpenOptions::new()
             .write(true)
             .create(true)
-            .truncate(true)
+            .truncate(false)
             .open(path)
             .map_err(|source| Error::Io {
                 context: "unable to create snapshot file",
@@ -323,7 +323,7 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
             .custom_flags(O_NOFOLLOW)
             .write(true)
             .create(true)
-            .truncate(true)
+            .truncate(false)
             .open(path)
             .map_err(|source| Error::Io {
                 context: "unable to create snapshot file",
@@ -338,6 +338,7 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
     /// Returns an error if:
     /// - The source file cannot be opened for reading
     /// - The destination file cannot be created or opened for writing
+    /// - The source and destination refer to the same regular file
     pub fn new(
         format: Format,
         src_filename: &Path,
@@ -345,6 +346,36 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
     ) -> Result<Image<File, File>> {
         let (src, align_src) = open_src(src_filename)?;
         let dst = Self::open_dst(dst_filename)?;
+
+        // Compare the opened files before truncation, including hard-link aliases.
+        // Keep non-regular destinations (such as devices and pipes) untruncated.
+        let dst_metadata = dst.metadata().map_err(|source| Error::Io {
+            context: "unable to inspect snapshot destination",
+            source,
+        })?;
+        if dst_metadata.is_file() {
+            let same_file = (|| -> std::io::Result<bool> {
+                Ok(same_file::Handle::from_file(src.try_clone()?)?
+                    == same_file::Handle::from_file(dst.try_clone()?)?)
+            })()
+            .map_err(|source| Error::Io {
+                context: "unable to compare source and destination files",
+                source,
+            })?;
+            if same_file {
+                return Err(Error::Io {
+                    context: "source and destination refer to the same file; choose a different output path",
+                    source: std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "refusing to overwrite the source image",
+                    ),
+                });
+            }
+            dst.set_len(0).map_err(|source| Error::Io {
+                context: "unable to truncate snapshot destination",
+                source,
+            })?;
+        }
 
         Ok(Image::<File, File> {
             format,
