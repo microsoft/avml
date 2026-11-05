@@ -85,11 +85,6 @@ async fn stream_blob(args: BlobArgs) -> Result<()> {
         .block_blob_client();
     let format = Format::from(args.compress);
 
-    let source = match args.source {
-        Some(s) => s,
-        None => Snapshot::probe_single_source().map_err(avml::Error::from)?,
-    };
-
     let stream = BlockBlobStream::new(block_client, block_size, concurrency);
 
     let (stream, result) = tokio::task::spawn_blocking(
@@ -99,7 +94,7 @@ async fn stream_blob(args: BlobArgs) -> Result<()> {
             // any in-scope path satisfies the &Path borrow.
             let dummy = PathBuf::from("/dev/null");
             let snapshot = Snapshot::new(&dummy, ranges)
-                .source(Some(source))
+                .source(args.source)
                 .format(format);
             let r: core::result::Result<(), avml::Error> = snapshot
                 .create_to_writer(stream.writer())
@@ -174,11 +169,6 @@ fn derive_block_size(
 async fn stream_tcp(args: TcpArgs) -> Result<()> {
     let ranges = iomem::parse()?;
     let format = Format::from(args.compress);
-    let source = match args.source {
-        Some(s) => s,
-        None => Snapshot::probe_single_source().map_err(avml::Error::from)?,
-    };
-
     let socket = tokio::net::TcpStream::connect(&args.addr)
         .await
         .map_err(|io_err| avml::Error::Io {
@@ -192,7 +182,7 @@ async fn stream_tcp(args: TcpArgs) -> Result<()> {
         // any in-scope path satisfies the &Path borrow.
         let dummy = PathBuf::from("/dev/null");
         let snapshot = Snapshot::new(&dummy, ranges)
-            .source(Some(source))
+            .source(args.source)
             .format(format);
         snapshot
             .create_to_writer(&mut bridge)
