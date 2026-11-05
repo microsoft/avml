@@ -20,7 +20,17 @@ or kernel a priori.  No on-target compilation or fingerprinting is needed.
 * /proc/kcore
 * /dev/mem
 
-If the memory source is not specified on the commandline, AVML will iterate over the memory sources to find a functional source.
+Before producing output, AVML validates the source's memory ranges and reads
+its first chunk (up to 16 MiB). If no source is specified, it tries `/proc/kcore`,
+then `/dev/crash`, then `/dev/mem` until validation succeeds. The selected source
+handle and buffered chunk are retained for acquisition. A later read or write
+failure ends acquisition; AVML does not switch sources after validation.
+
+Local acquisition and conversion outputs must not already exist. AVML creates
+them exclusively and refuses existing files, hard links, and destination
+symlinks. On Unix only, exactly `/dev/null` and `/dev/stdout` are opened for
+writing without creation or truncation. A failed acquisition can leave a partial
+local output; use a new path or remove that file before retrying.
 
 > NOTE: If the kernel feature [kernel\_lockdown](https://man7.org/linux/man-pages/man7/kernel_lockdown.7.html) is enabled, AVML will not be able to acquire memory.
 
@@ -86,11 +96,10 @@ avml acquire --sas-url ${SAS_URL} --delete output.lime
 
 For hosts where writing the snapshot to a local file first is undesirable
 (read-only root, limited disk, forensic chain-of-custody concerns), use
-the `stream` subcommand. It picks the memory source once up front (same
-preference order as `acquire`'s `/dev/stdout` path — `/proc/kcore`, then
-`/dev/crash`, then `/dev/mem`; pass `--source` to override) and writes
-bytes sequentially to the chosen destination. The source cannot be
-changed mid-stream, so there is no automatic source fallback.
+the `stream` subcommand. It uses the same source validation and selection as
+`acquire` (pass `--source` to override) and writes bytes sequentially to the
+chosen destination. Sources are tried only during validation, before any output
+bytes are sent. The source cannot be changed mid-stream.
 
 ### To Azure Block Blob Storage
 

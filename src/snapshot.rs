@@ -5,7 +5,7 @@
 use crate::disk_usage;
 use crate::{
     errors::format_error,
-    image::{Block, Format, Image},
+    image::{Block, Format, Image, MAX_BLOCK_SIZE},
 };
 use clap::ValueEnum;
 use core::{
@@ -17,7 +17,7 @@ use elf::{abi::PT_LOAD, endian::NativeEndian, segment::ProgramHeader};
 #[cfg(not(target_family = "unix"))]
 use std::env::consts::OS;
 use std::{
-    fs::{File, OpenOptions, metadata},
+    fs::File,
     io::{Read, Seek, Write},
     path::{Path, PathBuf},
 };
@@ -105,19 +105,6 @@ impl FmtDebug for Error {
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-impl Error {
-    /// True when the underlying failure is a pre-acquisition disk-usage
-    /// rejection. These are surfaced immediately rather than aggregated:
-    /// trying the next source won't change the answer.
-    fn is_disk_usage_exceeded(&self) -> bool {
-        matches!(
-            self,
-            Error::UnableToCreateSnapshotFromSource { source: inner, .. }
-                if matches!(**inner, Error::DiskUsageEstimateExceeded { .. })
-        )
-    }
-}
-
 #[derive(Debug, Clone, ValueEnum)]
 pub enum Source {
     /// Provides a read-only view of physical memory.  Access to memory using
@@ -174,23 +161,29 @@ impl FmtDisplay for Source {
     }
 }
 
-#[must_use]
-fn can_open(src: &Path) -> bool {
-    OpenOptions::new().read(true).open(src).is_ok()
+struct PreparedSnapshot {
+    source: Source,
+    image: Image<File, Vec<u8>>,
+    blocks: Vec<Block>,
 }
 
-// The file /proc/kcore is a pseudo-file in ELF core format that is 4KB+physical
-// memory in size.
-//
-// If LOCKDOWN_KCORE is set in the kernel, then /proc/kcore may exist but is
-// either inaccessible or doesn't allow access to all of the kernel memory.
-//
-// /dev/mem and /dev/crash, if available, are devices, rather than virtual
-// files.  As such, we don't check those for size.
-#[must_use]
-fn is_kcore_ok() -> bool {
-    metadata(Path::new("/proc/kcore")).is_ok_and(|x| x.len() > 0x2000)
-        && can_open(Path::new("/proc/kcore"))
+impl PreparedSnapshot {
+    fn write_to<W: Write>(self, mut dst: W) -> Result<()> {
+        dst.write_all(&self.image.dst)
+            .map_err(|source| crate::image::Error::Io {
+                context: "unable to write initial memory chunk",
+                source,
+            })?;
+        drop(self.image.dst);
+        let mut image = Image {
+            format: self.image.format,
+            align_src: self.image.align_src,
+            src: self.image.src,
+            dst,
+        };
+        image.write_blocks(&self.blocks)?;
+        Ok(())
+    }
 }
 
 pub struct Snapshot<'a> {
@@ -252,20 +245,108 @@ impl<'a> Snapshot<'a> {
         Self { format, ..self }
     }
 
-    fn create_source(&self, src: &Source) -> Result<()> {
-        match *src {
-            Source::ProcKcore => self.kcore(),
-            Source::DevCrash => self.phys(Path::new("/dev/crash")),
-            Source::DevMem => self.phys(Path::new("/dev/mem")),
-            Source::Raw(ref s) => self.phys(s),
-        }
-        .map_err(|e| Error::UnableToCreateSnapshotFromSource {
-            src: src.clone(),
-            source: Box::new(e),
+    fn prepare_source(&self, source: &Source) -> Result<PreparedSnapshot> {
+        (|| {
+            let path = match *source {
+                Source::ProcKcore => Path::new("/proc/kcore"),
+                Source::DevCrash => Path::new("/dev/crash"),
+                Source::DevMem => Path::new("/dev/mem"),
+                Source::Raw(ref path) => path,
+            };
+            let mut image = Image::<File, Vec<u8>>::with_dst(self.format, path, Vec::new())?;
+            for range in &self.memory_ranges {
+                if range.start >= range.end {
+                    return Err(crate::image::Error::InvalidRange {
+                        range: range.clone(),
+                    }
+                    .into());
+                }
+            }
+            let mut blocks = if matches!(*source, Source::ProcKcore) {
+                Self::kcore_blocks(&mut image.src, &self.memory_ranges)?
+            } else {
+                Self::phys_blocks(path, &self.memory_ranges)
+            };
+            for block in &blocks {
+                if block.range.start >= block.range.end {
+                    return Err(crate::image::Error::InvalidRange {
+                        range: block.range.clone(),
+                    }
+                    .into());
+                }
+                block
+                    .offset
+                    .checked_add(block.range.end.saturating_sub(block.range.start))
+                    .ok_or(crate::image::Error::TooLarge)?;
+            }
+            let first = blocks.first_mut().ok_or_else(|| crate::image::Error::Io {
+                context: "no readable memory ranges for source",
+                source: std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "no memory blocks overlap the requested ranges",
+                ),
+            })?;
+            let end = first
+                .range
+                .end
+                .min(first.range.start.saturating_add(MAX_BLOCK_SIZE));
+            let first_chunk = Block {
+                offset: first.offset,
+                range: first.range.start..end,
+            };
+            first.offset = first
+                .offset
+                .checked_add(end.saturating_sub(first.range.start))
+                .ok_or(crate::image::Error::TooLarge)?;
+            first.range.start = end;
+            blocks.retain(|block| !block.range.is_empty());
+            image.write_blocks(&[first_chunk])?;
+            Ok(PreparedSnapshot {
+                source: source.clone(),
+                image,
+                blocks,
+            })
+        })()
+        .map_err(|error| Error::UnableToCreateSnapshotFromSource {
+            src: source.clone(),
+            source: Box::new(error),
         })
     }
 
-    /// Create a memory snapshot
+    fn select_source(&self, [kcore, crash, devmem]: [Source; 3]) -> Result<PreparedSnapshot> {
+        let kcore = match self.prepare_source(&kcore) {
+            Ok(prepared) => return Ok(prepared),
+            Err(error) => Box::new(error),
+        };
+        let crash = match self.prepare_source(&crash) {
+            Ok(prepared) => return Ok(prepared),
+            Err(error) => Box::new(error),
+        };
+        let devmem = match self.prepare_source(&devmem) {
+            Ok(prepared) => return Ok(prepared),
+            Err(error) => Box::new(error),
+        };
+        Err(Error::AllSourcesFailed {
+            crash,
+            kcore,
+            devmem,
+        })
+    }
+
+    fn prepare(&self) -> Result<PreparedSnapshot> {
+        if let Some(ref source) = self.source {
+            self.prepare_source(source)
+        } else {
+            self.select_source([Source::ProcKcore, Source::DevCrash, Source::DevMem])
+        }
+    }
+
+    /// Create a memory snapshot.
+    ///
+    /// Validate the source's memory ranges and buffer its first chunk before
+    /// opening the destination. Automatic selection tries `/proc/kcore`, then
+    /// `/dev/crash`, then `/dev/mem`. Once selected, the source is never changed:
+    /// a later failure ends acquisition and leaves any partial output in place.
     ///
     /// # Errors
     /// Returns an error if:
@@ -273,66 +354,44 @@ impl<'a> Snapshot<'a> {
     /// - There is a failure reading from the specified source
     /// - The estimated disk usage exceeds the specified limits
     /// - Failed to create or write to the destination file
+    /// - The destination already exists, except for Unix `/dev/null` and `/dev/stdout`
     pub fn create(&self) -> Result<()> {
-        if let Some(ref src) = self.source {
-            self.create_source(src)?;
-        } else if self.destination == Path::new("/dev/stdout") {
-            let src = Self::probe_single_source()?;
-            self.create_source(&src)?;
-        } else {
-            let crash = match self.create_source(&Source::DevCrash) {
-                Ok(()) => return Ok(()),
-                Err(e) if e.is_disk_usage_exceeded() => return Err(e),
-                Err(e) => Box::new(e),
-            };
-            let kcore = match self.create_source(&Source::ProcKcore) {
-                Ok(()) => return Ok(()),
-                Err(e) if e.is_disk_usage_exceeded() => return Err(e),
-                Err(e) => Box::new(e),
-            };
-            let devmem = match self.create_source(&Source::DevMem) {
-                Ok(()) => return Ok(()),
-                Err(e) if e.is_disk_usage_exceeded() => return Err(e),
-                Err(e) => Box::new(e),
-            };
-
-            return Err(Error::AllSourcesFailed {
-                crash,
-                kcore,
-                devmem,
-            });
-        }
-
-        Ok(())
+        let prepared = self.prepare()?;
+        let source = prepared.source.clone();
+        (|| {
+            let dst = Image::<File, File>::open_dst(self.destination)?;
+            self.check_disk_usage()?;
+            prepared.write_to(dst)
+        })()
+        .map_err(|error| Error::UnableToCreateSnapshotFromSource {
+            src: source,
+            source: Box::new(error),
+        })
     }
 
-    /// Probe for an available source without trying multiple. Used when the
-    /// destination cannot be rewound (`/dev/stdout`, streaming blob upload).
+    /// Validate sources using the current `/proc/iomem` ranges, returning the
+    /// first candidate whose range mapping and first chunk can be read.
     ///
-    /// Preference order matches the historical `/dev/stdout` branch: kcore,
-    /// then `/dev/crash`, then `/dev/mem`.
+    /// Preference order is `/proc/kcore`, then `/dev/crash`, then `/dev/mem`.
+    /// This helper drops the probed handle. Acquisition methods instead retain
+    /// their own validated handle and buffered chunk through completion.
     ///
     /// # Errors
-    /// Returns `NoSourceAvailable` if none of the three probes succeed.
+    /// Returns an error if memory ranges cannot be read or all sources fail.
     pub fn probe_single_source() -> Result<Source> {
-        if is_kcore_ok() {
-            Ok(Source::ProcKcore)
-        } else if can_open(Path::new("/dev/crash")) {
-            Ok(Source::DevCrash)
-        } else if can_open(Path::new("/dev/mem")) {
-            Ok(Source::DevMem)
-        } else {
-            Err(Error::NoSourceAvailable)
-        }
+        let ranges = crate::iomem::parse().map_err(|source| crate::image::Error::Io {
+            context: "unable to read memory ranges for source validation",
+            source: std::io::Error::other(source),
+        })?;
+        let prepared = Self::new(Path::new("/dev/null"), ranges).prepare()?;
+        Ok(prepared.source)
     }
 
     /// Stream a memory snapshot to an arbitrary writer.
     ///
-    /// Unlike [`Self::create`], this does **not** auto-retry across
-    /// sources. The destination is not assumed to be rewindable, so once
-    /// any bytes are written we cannot fall back to a different source.
-    /// The caller must either supply a [`Source`] via [`Self::source`] or
-    /// rely on [`Self::probe_single_source`] to pick one up front.
+    /// Like [`Self::create`], this validates the source and buffers its first
+    /// chunk before writing any output. Source fallback is only allowed during
+    /// validation; any later read or write failure ends acquisition.
     ///
     /// `max_disk_usage` and `max_disk_usage_percentage` are ignored: with
     /// no local disk involvement the limits don't apply. The caller is
@@ -344,21 +403,14 @@ impl<'a> Snapshot<'a> {
     /// - There is a failure reading from the source
     /// - Writing to `dst` fails
     pub fn create_to_writer<W: Write>(&self, dst: W) -> Result<()> {
-        let source = match self.source {
-            Some(ref s) => s.clone(),
-            None => Self::probe_single_source()?,
-        };
-
-        match source {
-            Source::ProcKcore => self.kcore_to_writer(dst),
-            Source::DevCrash => self.phys_to_writer(Path::new("/dev/crash"), dst),
-            Source::DevMem => self.phys_to_writer(Path::new("/dev/mem"), dst),
-            Source::Raw(ref s) => self.phys_to_writer(s, dst),
-        }
-        .map_err(|e| Error::UnableToCreateSnapshotFromSource {
-            src: source,
-            source: Box::new(e),
-        })
+        let prepared = self.prepare()?;
+        let source = prepared.source.clone();
+        prepared
+            .write_to(dst)
+            .map_err(|error| Error::UnableToCreateSnapshotFromSource {
+                src: source,
+                source: Box::new(error),
+            })
     }
 
     // given a set of ranges from iomem and a set of Blocks derived from the
@@ -408,12 +460,9 @@ impl<'a> Snapshot<'a> {
         result
     }
 
-    /// Check disk usage of the destination
-    ///
-    /// NOTE: This requires `Image` because we want to ensure this is called
-    /// after the file is created.
+    /// Check disk usage after creating the destination.
     #[cfg(target_family = "unix")]
-    fn check_disk_usage<R: Read + Seek, W: Write>(&self, _: &Image<R, W>) -> Result<()> {
+    fn check_disk_usage(&self) -> Result<()> {
         disk_usage::check(
             self.destination,
             &self.memory_ranges,
@@ -426,38 +475,18 @@ impl<'a> Snapshot<'a> {
     ///
     /// On non-Unix platforms, this operation is a no-op.
     #[cfg(not(target_family = "unix"))]
-    fn check_disk_usage<R: Read + Seek, W: Write>(&self, _: &Image<R, W>) -> Result<()> {
+    fn check_disk_usage(&self) -> Result<()> {
         if self.max_disk_usage.is_some() || self.max_disk_usage_percentage.is_some() {
             return Err(Error::UnsupportedPlatform { os: OS });
         }
         Ok(())
     }
 
-    fn kcore(&self) -> Result<()> {
-        if !is_kcore_ok() {
-            return Err(Error::LockedDownKcore);
-        }
-
-        let mut image =
-            Image::<File, File>::new(self.format, Path::new("/proc/kcore"), self.destination)?;
-        self.check_disk_usage(&image)?;
-        Self::write_kcore_blocks(&mut image, &self.memory_ranges)
-    }
-
-    fn kcore_to_writer<W: Write>(&self, dst: W) -> Result<()> {
-        if !is_kcore_ok() {
-            return Err(Error::LockedDownKcore);
-        }
-
-        let mut image = Image::<File, W>::with_dst(self.format, Path::new("/proc/kcore"), dst)?;
-        Self::write_kcore_blocks(&mut image, &self.memory_ranges)
-    }
-
-    fn write_kcore_blocks<W: Write>(
-        image: &mut Image<File, W>,
+    fn kcore_blocks<R: Read + Seek>(
+        src: &mut R,
         memory_ranges: &[Range<u64>],
-    ) -> Result<()> {
-        let file = elf::ElfStream::<NativeEndian, _>::open_stream(&mut image.src)?;
+    ) -> Result<Vec<Block>> {
+        let file = elf::ElfStream::<NativeEndian, _>::open_stream(src)?;
         let physical_ranges = Self::physical_ranges_from_segments(file.segments());
 
         if physical_ranges.is_empty() {
@@ -470,8 +499,12 @@ impl<'a> Snapshot<'a> {
         }
 
         let blocks = Self::find_kcore_blocks(memory_ranges, &physical_ranges);
-        image.write_blocks(&blocks)?;
-        Ok(())
+        if blocks.is_empty() {
+            return Err(Error::KcoreParse(
+                "no PT_LOAD segments overlap the requested memory ranges",
+            ));
+        }
+        Ok(blocks)
     }
 
     // Translate /proc/kcore PT_LOAD segments into physical-address Blocks,
@@ -515,21 +548,6 @@ impl<'a> Snapshot<'a> {
         blocks
     }
 
-    fn phys(&self, mem: &Path) -> Result<()> {
-        let blocks = Self::phys_blocks(mem, &self.memory_ranges);
-        let mut image = Image::<File, File>::new(self.format, mem, self.destination)?;
-        self.check_disk_usage(&image)?;
-        image.write_blocks(&blocks)?;
-        Ok(())
-    }
-
-    fn phys_to_writer<W: Write>(&self, mem: &Path, dst: W) -> Result<()> {
-        let blocks = Self::phys_blocks(mem, &self.memory_ranges);
-        let mut image = Image::<File, W>::with_dst(self.format, mem, dst)?;
-        image.write_blocks(&blocks)?;
-        Ok(())
-    }
-
     fn phys_blocks(mem: &Path, memory_ranges: &[Range<u64>]) -> Vec<Block> {
         let is_crash = mem == Path::new("/dev/crash");
         memory_ranges
@@ -549,6 +567,245 @@ impl<'a> Snapshot<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{fs, io::Cursor};
+
+    type TestResult<T = ()> = core::result::Result<T, Box<dyn core::error::Error>>;
+
+    fn raw_source(path: &Path, bytes: &[u8]) -> std::io::Result<Source> {
+        fs::write(path, bytes)?;
+        Ok(Source::Raw(path.to_path_buf()))
+    }
+
+    fn encoded_blocks(bytes: &[u8], ranges: &[Range<u64>], format: Format) -> TestResult<Vec<u8>> {
+        let mut image = Image::from_streams(format, Cursor::new(bytes), Vec::new());
+        let blocks: Vec<_> = ranges
+            .iter()
+            .map(|range| Block {
+                offset: range.start,
+                range: range.clone(),
+            })
+            .collect();
+        image.write_blocks(&blocks)?;
+        Ok(image.dst)
+    }
+
+    #[test]
+    fn invalid_source_does_not_create_or_write_output() -> TestResult {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("source");
+        let source = raw_source(&path, b"abc")?;
+        let dst = dir.path().join("output");
+        for ranges in [
+            vec![Range { start: 0, end: 4 }],
+            Vec::new(),
+            vec![Range { start: 4, end: 3 }],
+        ] {
+            let snapshot = Snapshot::new(&dst, ranges).source(Some(source.clone()));
+            assert!(matches!(
+                snapshot.create(),
+                Err(Error::UnableToCreateSnapshotFromSource { .. })
+            ));
+            assert!(!dst.exists());
+            let mut output = Vec::new();
+            assert!(matches!(
+                snapshot.create_to_writer(&mut output),
+                Err(Error::UnableToCreateSnapshotFromSource { .. })
+            ));
+            assert_eq!(output, Vec::<u8>::new());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn selection_skips_failed_initial_reads_but_never_retries_later_failures() -> TestResult {
+        let dir = tempfile::tempdir()?;
+        let bad = raw_source(&dir.path().join("bad"), b"ab")?;
+        let partial = raw_source(&dir.path().join("partial"), b"abcd")?;
+        let good = raw_source(&dir.path().join("good"), b"abcdefghijkl")?;
+        let dst = dir.path().join("output");
+        let snapshot = Snapshot::new(&dst, vec![0..4, 8..12]);
+
+        let prepared = snapshot.select_source([bad.clone(), partial.clone(), good.clone()])?;
+        assert!(matches!(
+            (&prepared.source, &partial),
+            (Source::Raw(selected), Source::Raw(expected)) if selected == expected
+        ));
+        assert!(!dst.exists());
+        let mut output = Vec::new();
+        assert!(matches!(
+            prepared.write_to(&mut output),
+            Err(Error::UnableToCreateMemorySnapshot(_))
+        ));
+        assert_eq!(
+            output,
+            encoded_blocks(b"abcd", &[Range { start: 0, end: 4 }], Format::Lime)?
+        );
+
+        assert!(matches!(
+            snapshot.select_source([bad.clone(), bad.clone(), bad]),
+            Err(Error::AllSourcesFailed { .. })
+        ));
+        let snapshot = snapshot.source(Some(partial));
+        assert!(matches!(
+            snapshot.create(),
+            Err(Error::UnableToCreateSnapshotFromSource { .. })
+        ));
+        assert_eq!(fs::read(&dst)?, output);
+        let mut streamed = Vec::new();
+        assert!(matches!(
+            snapshot.create_to_writer(&mut streamed),
+            Err(Error::UnableToCreateSnapshotFromSource { .. })
+        ));
+        assert_eq!(streamed, output);
+        Ok(())
+    }
+
+    #[test]
+    fn initial_chunk_is_bounded_and_continues_without_duplicate_bytes() -> TestResult {
+        let dir = tempfile::tempdir()?;
+        let len = usize::try_from(MAX_BLOCK_SIZE)?.saturating_add(17);
+        let bytes = vec![0x51; len];
+        let source = raw_source(&dir.path().join("source"), &bytes)?;
+        let dst = dir.path().join("output");
+        let range = 0..u64::try_from(len)?;
+        for format in [Format::Lime, Format::AvmlCompressed] {
+            let snapshot = Snapshot::new(&dst, vec![range.clone()])
+                .source(Some(source.clone()))
+                .format(format);
+            let prepared = snapshot.prepare()?;
+            assert_eq!(
+                prepared.blocks,
+                vec![Block {
+                    offset: MAX_BLOCK_SIZE,
+                    range: MAX_BLOCK_SIZE..range.end,
+                }]
+            );
+            let mut output = Vec::new();
+            prepared.write_to(&mut output)?;
+            assert_eq!(
+                output,
+                encoded_blocks(&bytes, std::slice::from_ref(&range), format)?
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn zero_initial_chunk_still_selects_source_and_preserves_following_ranges() -> TestResult {
+        let dir = tempfile::tempdir()?;
+        let bytes = b"\0\0\0\0abcd";
+        let source = raw_source(&dir.path().join("source"), bytes)?;
+        let dst = dir.path().join("output");
+        let snapshot = Snapshot::new(&dst, vec![0..4, 4..8]).source(Some(source));
+        let mut output = Vec::new();
+        snapshot.create_to_writer(&mut output)?;
+        assert_eq!(output, encoded_blocks(bytes, &[0..4, 4..8], Format::Lime)?);
+        snapshot.create()?;
+        assert_eq!(fs::read(&dst)?, output);
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn acquisition_retains_initial_bytes_and_open_source_after_path_replacement() -> TestResult {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("source");
+        let source = raw_source(&path, b"abcdefgh")?;
+        let dst = dir.path().join("output");
+        let snapshot = Snapshot::new(&dst, vec![0..4, 4..8]).source(Some(source));
+        let prepared = snapshot.prepare()?;
+        let retained = dir.path().join("retained");
+        fs::rename(&path, &retained)?;
+        fs::write(&retained, b"xxxxefgh")?;
+        fs::write(&path, b"replaced")?;
+        let mut output = Vec::new();
+        prepared.write_to(&mut output)?;
+        assert_eq!(
+            output,
+            encoded_blocks(b"abcdefgh", &[0..4, 4..8], Format::Lime)?
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn output_failures_do_not_restart_acquisition() -> TestResult {
+        let dir = tempfile::tempdir()?;
+        let source = raw_source(&dir.path().join("source"), b"abcdefgh")?;
+        let dst = dir.path().join("output");
+        let snapshot = Snapshot::new(&dst, vec![0..4, 4..8]).source(Some(source));
+        fs::write(&dst, b"existing evidence")?;
+        assert!(matches!(
+            snapshot.create(),
+            Err(Error::UnableToCreateSnapshotFromSource { .. })
+        ));
+        assert_eq!(fs::read(&dst)?, b"existing evidence");
+        let mut output = [0_u8; 1];
+        assert!(matches!(
+            snapshot.create_to_writer(output.as_mut_slice()),
+            Err(Error::UnableToCreateSnapshotFromSource { .. })
+        ));
+        assert_eq!(output, [0x45]);
+        Ok(())
+    }
+
+    fn kcore_fixture() -> TestResult<Vec<u8>> {
+        use byteorder::{NativeEndian as ByteOrder, WriteBytesExt as _};
+        let mut bytes = b"\x7fELF".to_vec();
+        bytes.extend_from_slice(&[2, if cfg!(target_endian = "little") { 1 } else { 2 }, 1]);
+        bytes.resize(16, 0);
+        bytes.write_u16::<ByteOrder>(elf::abi::ET_CORE)?;
+        bytes.write_u16::<ByteOrder>(elf::abi::EM_X86_64)?;
+        bytes.write_u32::<ByteOrder>(1)?;
+        bytes.write_u64::<ByteOrder>(0)?;
+        bytes.write_u64::<ByteOrder>(64)?;
+        bytes.write_u64::<ByteOrder>(0)?;
+        bytes.write_u32::<ByteOrder>(0)?;
+        bytes.write_u16::<ByteOrder>(64)?;
+        bytes.write_u16::<ByteOrder>(56)?;
+        bytes.write_u16::<ByteOrder>(1)?;
+        bytes.write_u16::<ByteOrder>(0)?;
+        bytes.write_u16::<ByteOrder>(0)?;
+        bytes.write_u16::<ByteOrder>(0)?;
+        bytes.write_u32::<ByteOrder>(PT_LOAD)?;
+        bytes.write_u32::<ByteOrder>(0)?;
+        bytes.write_u64::<ByteOrder>(0x1000)?;
+        bytes.write_u64::<ByteOrder>(0)?;
+        bytes.write_u64::<ByteOrder>(0x2000)?;
+        bytes.write_u64::<ByteOrder>(4)?;
+        bytes.write_u64::<ByteOrder>(4)?;
+        bytes.write_u64::<ByteOrder>(0x1000)?;
+        bytes.resize(0x1000, 0);
+        bytes.extend_from_slice(b"abcd");
+        Ok(bytes)
+    }
+
+    #[test]
+    fn kcore_validation_requires_valid_metadata_and_overlapping_ranges() -> TestResult {
+        let bytes = kcore_fixture()?;
+        let range = 0x2000..0x2004;
+        let blocks =
+            Snapshot::kcore_blocks(&mut Cursor::new(&bytes), std::slice::from_ref(&range))?;
+        assert_eq!(
+            blocks,
+            vec![Block {
+                offset: 0x1000,
+                range: 0x2000..0x2004,
+            }]
+        );
+        let missing = 0x3000..0x3004;
+        assert!(matches!(
+            Snapshot::kcore_blocks(&mut Cursor::new(&bytes), std::slice::from_ref(&missing)),
+            Err(Error::KcoreParse(_))
+        ));
+        assert!(matches!(
+            Snapshot::kcore_blocks(
+                &mut Cursor::new(b"invalid ELF"),
+                std::slice::from_ref(&range)
+            ),
+            Err(Error::Elf(_))
+        ));
+        Ok(())
+    }
 
     #[test]
     fn translate_ranges() {
