@@ -8,6 +8,8 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../"
 
+source eng/musl-cross-common.sh
+
 VERBOSE="${VERBOSE:-0}"
 
 TARGET_NAME="${TARGET_NAME:-armv5te-unknown-linux-musleabi}"
@@ -17,10 +19,6 @@ ARTIFACT_DIR="${ARTIFACT_DIR:-target/armeb-unknown-linux-musleabi/release}"
 CARGO_TOOLCHAIN="${CARGO_TOOLCHAIN:-nightly}"
 CROSS_COMPILE="${CROSS_COMPILE:-armeb-linux-musleabi-}"
 MUSL_TOOLCHAIN_DIR="${MUSL_TOOLCHAIN_DIR:-${HOME}/.cache/avml/armeb-linux-musleabi-cross}"
-MUSL_CROSS_MAKE_REV="${MUSL_CROSS_MAKE_REV:-227df8b99103f9c59f6570babf892978e293082f}"
-MUSL_CROSS_MAKE_URL="${MUSL_CROSS_MAKE_URL:-https://github.com/richfelker/musl-cross-make/archive/${MUSL_CROSS_MAKE_REV}.tar.gz}"
-MUSL_CROSS_MAKE_SHA256="${MUSL_CROSS_MAKE_SHA256:-bb3fc7851088e1e5e1274ee56a0ab6ae176043d160fdf0b71027934b091f208a}"
-MUSL_CROSS_MAKE_ARCHIVE="${MUSL_CROSS_MAKE_ARCHIVE:-}"
 MUSL_CROSS_MAKE_DIR="${MUSL_CROSS_MAKE_DIR:-${HOME}/.cache/avml/musl-cross-make-${MUSL_CROSS_MAKE_REV}}"
 BUILD_TOOLS_DIR="${BUILD_TOOLS_DIR:-target/armv6b-build-tools}"
 if [[ "$BUILD_TOOLS_DIR" != /* ]]; then
@@ -29,7 +27,6 @@ fi
 BUILD_LOG="${BUILD_LOG:-${BUILD_TOOLS_DIR}/build.log}"
 TARGET_ENV="${TARGET_NAME//-/_}"
 TARGET_ENV="${TARGET_ENV^^}"
-MUSL_CROSS_MAKE_DL_CMD="curl --fail --show-error --location --continue-at - --output"
 
 mkdir -p "$(dirname "$BUILD_LOG")"
 : > "$BUILD_LOG"
@@ -105,47 +102,8 @@ ensure_rust_toolchain() {
     rustup toolchain install "$CARGO_TOOLCHAIN" --profile minimal --component rust-src
 }
 
-verify_sha256() {
-    local archive="$1"
-    local expected_sha256="$2"
-
-    if ! echo "${expected_sha256}  ${archive}" | sha256sum --check --status; then
-        echo "${archive}: SHA-256 verification failed; expected ${expected_sha256}" >&2
-        exit 1
-    fi
-}
-
-download_verified() {
-    local url="$1"
-    local archive="$2"
-    local expected_sha256="$3"
-
-    log "Downloading musl-cross-make"
-    curl --fail --show-error --location --retry 5 --retry-delay 10 \
-        --output "$archive" "$url"
-    verify_sha256 "$archive" "$expected_sha256"
-}
-
 ensure_source_musl_toolchain() {
-    local archive="${BUILD_TOOLS_DIR}/musl-cross-make-${MUSL_CROSS_MAKE_REV}.tar.gz"
-
-    mkdir -p "$BUILD_TOOLS_DIR" "$MUSL_CROSS_MAKE_DIR"
-    if [[ -n "$MUSL_CROSS_MAKE_ARCHIVE" ]]; then
-        archive="$MUSL_CROSS_MAKE_ARCHIVE"
-        verify_sha256 "$archive" "$MUSL_CROSS_MAKE_SHA256"
-    elif [[ ! -f "$archive" ]]; then
-        download_verified "$MUSL_CROSS_MAKE_URL" "$archive" "$MUSL_CROSS_MAKE_SHA256"
-    else
-        verify_sha256 "$archive" "$MUSL_CROSS_MAKE_SHA256"
-    fi
-
-    if [[ ! -f "${MUSL_CROSS_MAKE_DIR}/Makefile" ]]; then
-        log "Extracting musl-cross-make"
-        rm -rf "$MUSL_CROSS_MAKE_DIR"
-        mkdir -p "$MUSL_CROSS_MAKE_DIR"
-        tar --extract --gzip --directory "$MUSL_CROSS_MAKE_DIR" --strip-components=1 \
-            --file "$archive"
-    fi
+    avml_ensure_musl_cross_make_source "$BUILD_TOOLS_DIR" "$MUSL_CROSS_MAKE_DIR"
 
     cat > "${MUSL_CROSS_MAKE_DIR}/config.mak" <<EOF
 TARGET = armeb-linux-musleabi
@@ -158,6 +116,7 @@ GCC_CONFIG += --disable-libquadmath --disable-decimal-float --disable-libitm
 GCC_CONFIG += --disable-fixed-point --disable-lto --enable-languages=c,c++
 EOF
 
+    avml_ensure_musl_source "$MUSL_CROSS_MAKE_DIR"
     log "Building musl cross toolchain"
     make -C "$MUSL_CROSS_MAKE_DIR"
     make -C "$MUSL_CROSS_MAKE_DIR" install
