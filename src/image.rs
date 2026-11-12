@@ -4,8 +4,6 @@
 use crate::io::snappy::SnapCountWriter;
 use byteorder::{ByteOrder as _, LittleEndian, ReadBytesExt as _};
 use core::ops::Range;
-#[cfg(target_family = "unix")]
-use libc::O_NOFOLLOW;
 use snap::read::FrameDecoder;
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::OpenOptionsExt as _;
@@ -303,32 +301,22 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
         self.format
     }
 
-    #[cfg(target_family = "windows")]
-    fn open_dst(path: &Path) -> Result<File> {
-        OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(path)
-            .map_err(|source| Error::Io {
-                context: "unable to create snapshot file",
-                source,
-            })
-    }
-
-    #[cfg(target_family = "unix")]
-    fn open_dst(path: &Path) -> Result<File> {
-        OpenOptions::new()
-            .mode(0o600)
-            .custom_flags(O_NOFOLLOW)
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(path)
-            .map_err(|source| Error::Io {
-                context: "unable to create snapshot file",
-                source,
-            })
+    pub(crate) fn open_dst(path: &Path) -> Result<File> {
+        let mut options = OpenOptions::new();
+        options.write(true);
+        #[cfg(target_family = "unix")]
+        {
+            options.mode(0o600);
+            if path != Path::new("/dev/null") && path != Path::new("/dev/stdout") {
+                options.create_new(true);
+            }
+        }
+        #[cfg(not(target_family = "unix"))]
+        options.create_new(true);
+        options.open(path).map_err(|source| Error::Io {
+            context: "unable to create snapshot file",
+            source,
+        })
     }
 
     /// Open `src_filename` for reading and `dst_filename` for writing,
@@ -338,6 +326,7 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
     /// Returns an error if:
     /// - The source file cannot be opened for reading
     /// - The destination file cannot be created or opened for writing
+    /// - The destination already exists, except for Unix `/dev/null` and `/dev/stdout`
     pub fn new(
         format: Format,
         src_filename: &Path,
@@ -390,14 +379,12 @@ impl<R: Read + Seek, W: Write> Image<R, W> {
     }
 
     fn write_block(&mut self, block: &Block) -> Result<()> {
-        if block.offset > 0 {
-            self.src
-                .seek(SeekFrom::Start(block.offset))
-                .map_err(|source| Error::Io {
-                    context: "unable to see to page",
-                    source,
-                })?;
-        }
+        self.src
+            .seek(SeekFrom::Start(block.offset))
+            .map_err(|source| Error::Io {
+                context: "unable to seek to memory block",
+                source,
+            })?;
 
         self.copy_block(block.range.clone())?;
         Ok(())
@@ -580,6 +567,26 @@ mod tests {
     use super::{Error, Format, HEADER_LEN, Header, Image, PAGE_SIZE};
     use core::ops::Range;
     use std::io::{Cursor, ErrorKind};
+
+    #[test]
+    fn write_blocks_seeks_to_zero_offset() -> core::result::Result<(), Error> {
+        let mut src = Cursor::new(b"abcd");
+        src.set_position(2);
+        let mut image = Image::from_streams(Format::Lime, src, Vec::new());
+        image.write_blocks(&[super::Block {
+            offset: 0,
+            range: 0..4,
+        }])?;
+        let mut encoded = Cursor::new(image.dst);
+        assert_eq!(Header::read(&mut encoded)?.range, 0..4);
+        let mut bytes = Vec::new();
+        std::io::Read::read_to_end(&mut encoded, &mut bytes).map_err(|source| Error::Io {
+            context: "unable to read test payload",
+            source,
+        })?;
+        assert_eq!(bytes, b"abcd");
+        Ok(())
+    }
 
     #[test]
     fn encode_header_lime() {
